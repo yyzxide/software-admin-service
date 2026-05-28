@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>软件商店后台管理</title>
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+<body>
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="brand login-brand">
+        <div class="brand-mark">XC</div>
+        <div>
+          <h1>软件商店后台</h1>
+          <p>Java Admin Service</p>
+        </div>
+      </div>
+      <p class="login-copy">内测版后台管理台，登录后可进行软件、分类、标签和上传管理。</p>
+      <div class="field">
+        <label for="loginUsername">用户名</label>
+        <input id="loginUsername" name="username" type="text" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="loginPassword">密码</label>
+        <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="action-button login-button" type="submit">登录</button>
+      <p id="loginMessage" class="login-message"></p>
+    </form>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">XC</div>
+        <div>
+          <h1>软件商店后台</h1>
+          <p>Java Admin Service</p>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-tab="software">软件管理</button>
+        <button class="nav-item" data-tab="categories">分类管理</button>
+        <button class="nav-item" data-tab="tags">标签管理</button>
+        <button class="nav-item" data-tab="diagnostics">联调检查</button>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="topbar-copy">
+          <div class="service-indicator" id="serviceIndicator">软件商店后台管理</div>
+          <div class="topbar-subtitle">软件 / 分类 / 标签 / 上传</div>
+        </div>
+        <div class="topbar-actions">
+          <div class="connection-pill warn" id="connectionStatus">待连接</div>
+          <div class="session-pill" id="sessionUser">未登录</div>
+          <button id="logoutButton" class="icon-button" title="退出登录">退出</button>
+          <button id="refreshCurrent" class="icon-button primary" title="刷新当前页">刷新</button>
+        </div>
+      </header>
+
+      <section id="notice" class="notice hidden"></section>
+
+      <section class="tab-panel active" data-panel="software">
+        <div class="section-head">
+          <div>
+            <h2>软件管理</h2>
+            <p>列表、筛选、详情、上架和下架</p>
+          </div>
+          <div class="status-strip" id="softwareStats"></div>
+        </div>
+
+        <details class="upload-panel">
+          <summary>上传软件包</summary>
+          <form id="softwareUploadForm" class="upload-grid">
+            <input name="appKey" required maxlength="128" placeholder="App Key，例如 com.example.editor">
+            <input name="name" required maxlength="128" placeholder="软件名称">
+            <input name="categoryId" required type="number" min="1" placeholder="分类ID">
+            <input name="versionName" required maxlength="64" placeholder="版本号，例如 1.0.0">
+            <input name="versionCode" type="number" min="1" placeholder="版本数字">
+            <select name="osType" required>
+              <option value="uos_v20">UOS V20</option>
+              <option value="uos_v23">UOS V23</option>
+              <option value="kylin_v10">Kylin V10</option>
+              <option value="kylin_v11">Kylin V11</option>
+            </select>
+            <select name="arch" required>
+              <option value="x86_64">x86_64</option>
+              <option value="aarch64">aarch64</option>
+              <option value="loongarch64">loongarch64</option>
+            </select>
+            <select name="packageFormat" required>
+              <option value="deb">deb</option>
+              <option value="rpm">rpm</option>
+              <option value="appimage">appimage</option>
+            </select>
+            <input name="tagIds" placeholder="标签ID，逗号分隔">
+            <input name="iconUrl" maxlength="512" placeholder="图标URL，可选">
+            <input name="summary" required maxlength="512" placeholder="软件摘要">
+            <textarea name="description" required rows="3" placeholder="软件描述"></textarea>
+            <input name="packageFile" type="file" required>
+            <label class="check-field">
+              <input name="publishNow" type="checkbox">
+              上传后直接上架
+            </label>
+            <button class="action-button" type="submit">提交上传</button>
+          </form>
+        </details>
+
+        <div class="filter-grid">
+          <div class="field">
+            <label for="softwareKeyword">关键词</label>
+            <input id="softwareKeyword" type="search" placeholder="软件名 / app_key / 摘要">
+          </div>
+          <div class="field">
+            <label for="softwareStatus">状态</label>
+            <select id="softwareStatus">
+              <option value="">全部</option>
+              <option value="0">草稿</option>
+              <option value="1">审核中</option>
+              <option value="2">已上架</option>
+              <option value="3">已下架</option>
+              <option value="4">审核驳回</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="softwareCategory">分类ID</label>
+            <input id="softwareCategory" type="number" min="1" placeholder="可选">
+          </div>
+          <button id="searchSoftware" class="action-button">查询</button>
+        </div>
+
+        <div class="split-layout">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>软件</th>
+                  <th>分类</th>
+                  <th>状态</th>
+                  <th>版本</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="softwareTable"></tbody>
+            </table>
+          </div>
+          <aside class="detail-panel" id="softwareDetail">
+            <div class="empty-state">选择一条软件记录查看详情</div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="categories">
+        <div class="section-head">
+          <div>
+            <h2>分类管理</h2>
+            <p>分类新增、树形查询、启停和删除校验</p>
+          </div>
+          <button id="reloadCategories" class="action-button secondary">刷新分类</button>
+        </div>
+
+        <form id="categoryForm" class="form-row">
+          <input name="name" required maxlength="50" placeholder="分类名称">
+          <input name="parent_id" type="number" min="1" placeholder="父分类ID">
+          <input name="sort_order" type="number" placeholder="排序">
+          <button class="action-button" type="submit">新增分类</button>
+        </form>
+
+        <div id="categoryList" class="tile-grid"></div>
+      </section>
+
+      <section class="tab-panel" data-panel="tags">
+        <div class="section-head">
+          <div>
+            <h2>标签管理</h2>
+            <p>标签新增、热门标记、删除前关联校验</p>
+          </div>
+          <button id="reloadTags" class="action-button secondary">刷新标签</button>
+        </div>
+
+        <form id="tagForm" class="form-row">
+          <input name="name" required maxlength="50" placeholder="标签名称">
+          <input name="description" maxlength="255" placeholder="描述">
+          <label class="check-field">
+            <input name="is_hot" type="checkbox">
+            热门
+          </label>
+          <button class="action-button" type="submit">新增标签</button>
+        </form>
+
+        <div id="tagList" class="tile-grid"></div>
+      </section>
+
+      <section class="tab-panel" data-panel="diagnostics">
+        <div class="section-head">
+          <div>
+            <h2>联调检查</h2>
+            <p>健康检查、模块列表和请求头验证</p>
+          </div>
+          <button id="runDiagnostics" class="action-button">执行检查</button>
+        </div>
+        <pre id="diagnosticsOutput" class="log-output">等待执行检查</pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>

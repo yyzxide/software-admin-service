@@ -1,0 +1,49 @@
+server:
+  address: 0.0.0.0
+  port: 8090
+
+spring:
+  application:
+    name: java-software-admin-service
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${ADMIN_DB_URL:jdbc:mysql://localhost:3306/db_java_software_admin?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${ADMIN_DB_USERNAME:root}
+    password: ${ADMIN_DB_PASSWORD:root123456}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      initialization-fail-timeout: -1
+  data:
+    redis:
+      host: ${ADMIN_REDIS_HOST:localhost}
+      port: ${ADMIN_REDIS_PORT:6379}
+      password: ${ADMIN_REDIS_PASSWORD:}
+      database: ${ADMIN_REDIS_DATABASE:0}
+      timeout: 5000ms
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      max-file-size: ${ADMIN_UPLOAD_MAX_FILE_SIZE:1024MB}
+      max-request-size: ${ADMIN_UPLOAD_MAX_REQUEST_SIZE:1024MB}
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.xcappstore.admin: INFO
+
+admin:
+  security:
+    user-id: ${ADMIN_SECURITY_USER_ID:1}
+    username: ${ADMIN_SECURITY_USERNAME:admin}
+    password: ${ADMIN_SECURITY_PASSWORD:admin123456}
+    token-secret: ${ADMIN_SECURITY_TOKEN_SECRET:xcappstore-admin-local-secret}
+    ttl-seconds: ${ADMIN_SECURITY_TTL_SECONDS:7200}
+  upload:
+    package-dir: ${ADMIN_UPLOAD_PACKAGE_DIR:${user.dir}/storage/packages}

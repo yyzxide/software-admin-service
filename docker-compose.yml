@@ -1,0 +1,31 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: java-software-admin-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: db_java_software_admin
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - java_admin_mysql_data:/var/lib/mysql
+      - ./database/mysql/001_init_admin_schema.sql:/docker-entrypoint-initdb.d/001_init_admin_schema.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: java-software-admin-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - java_admin_redis_data:/data
+
+volumes:
+  java_admin_mysql_data:
+  java_admin_redis_data:

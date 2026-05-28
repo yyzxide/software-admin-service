@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.software.mapper.SoftwareMapper">
+    <resultMap id="SoftwareResultMap" type="com.xcappstore.admin.software.entity.SoftwareEntity">
+        <id column="id" property="id"/>
+        <result column="app_key" property="appKey"/>
+        <result column="name" property="name"/>
+        <result column="developer_id" property="developerId"/>
+        <result column="submit_source" property="submitSource"/>
+        <result column="category_id" property="categoryId"/>
+        <result column="category_name" property="categoryName"/>
+        <result column="icon_url" property="iconUrl"/>
+        <result column="summary" property="summary"/>
+        <result column="description" property="description"/>
+        <result column="supported_os_types" property="supportedOsTypes"/>
+        <result column="supported_archs" property="supportedArchs"/>
+        <result column="screenshots" property="screenshots"/>
+        <result column="status" property="status"/>
+        <result column="is_official" property="isOfficial"/>
+        <result column="is_featured" property="isFeatured"/>
+        <result column="sort_weight" property="sortWeight"/>
+        <result column="download_count" property="downloadCount"/>
+        <result column="rating_score" property="ratingScore"/>
+        <result column="rating_count" property="ratingCount"/>
+        <result column="published_at" property="publishedAt"/>
+        <result column="rejected_at" property="rejectedAt"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="created_by" property="createdBy"/>
+        <result column="updated_by" property="updatedBy"/>
+        <result column="latest_version_name" property="latestVersionName"/>
+        <result column="package_count" property="packageCount"/>
+        <result column="tag_names" property="tagNames"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        a.id, a.app_key, a.name, a.developer_id, a.submit_source, a.category_id,
+        c.name AS category_name,
+        a.icon_url, a.summary, a.description, a.supported_os_types, a.supported_archs,
+        a.screenshots, a.status, a.is_official, a.is_featured, a.sort_weight,
+        a.download_count, a.rating_score, a.rating_count, a.published_at, a.rejected_at,
+        a.created_at, a.updated_at, a.created_by, a.updated_by,
+        latest_version.version_name AS latest_version_name,
+        COALESCE(package_stats.package_count, 0) AS package_count,
+        tag_stats.tag_names AS tag_names
+    </sql>
+
+    <sql id="ListJoins">
+        LEFT JOIN categories c ON c.id = a.category_id AND c.deleted_at IS NULL
+        LEFT JOIN (
+            SELECT app_id, MAX(version_name) AS version_name
+            FROM app_versions
+            WHERE deleted_at IS NULL AND is_latest = 1
+            GROUP BY app_id
+        ) latest_version ON latest_version.app_id = a.id
+        LEFT JOIN (
+            SELECT app_id, COUNT(1) AS package_count
+            FROM app_packages
+            WHERE deleted_at IS NULL
+            GROUP BY app_id
+        ) package_stats ON package_stats.app_id = a.id
+        LEFT JOIN (
+            SELECT at.app_id, GROUP_CONCAT(t.name ORDER BY t.id SEPARATOR ',') AS tag_names
+            FROM app_tags at
+            INNER JOIN tags t ON t.id = at.tag_id
+            GROUP BY at.app_id
+        ) tag_stats ON tag_stats.app_id = a.id
+    </sql>
+
+    <sql id="QueryWhere">
+        a.deleted_at IS NULL
+        <if test="query.keyword != null and query.keyword != ''">
+            AND (
+                a.name LIKE CONCAT('%', #{query.keyword}, '%')
+                OR a.app_key LIKE CONCAT('%', #{query.keyword}, '%')
+                OR a.summary LIKE CONCAT('%', #{query.keyword}, '%')
+            )
+        </if>
+        <if test="query.categoryId != null">
+            AND a.category_id = #{query.categoryId}
+        </if>
+        <if test="query.developerId != null">
+            AND a.developer_id = #{query.developerId}
+        </if>
+        <if test="query.status != null">
+            AND a.status = #{query.status}
+        </if>
+        <if test="query.isOfficial != null">
+            AND a.is_official = #{query.isOfficial}
+        </if>
+        <if test="query.isFeatured != null">
+            AND a.is_featured = #{query.isFeatured}
+        </if>
+    </sql>
+
+    <select id="countByAppKey" resultType="long">
+        SELECT COUNT(1)
+        FROM apps
+        WHERE app_key = #{appKey}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="countCategory" resultType="long">
+        SELECT COUNT(1)
+        FROM categories
+        WHERE id = #{categoryId}
+          AND status = 1
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="countTag" resultType="long">
+        SELECT COUNT(1)
+        FROM tags
+        WHERE id = #{tagId}
+    </select>
+
+    <insert id="insertApp" parameterType="com.xcappstore.admin.software.entity.SoftwareEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO apps
+        (app_key, name, developer_id, submit_source, category_id, icon_url,
+         summary, description, supported_os_types, supported_archs, screenshots,
+         status, is_official, is_featured, sort_weight, download_count,
+         rating_score, rating_count, published_at, rejected_at, created_at,
+         updated_at, created_by, updated_by)
+        VALUES
+        (#{appKey}, #{name}, #{developerId}, #{submitSource}, #{categoryId}, #{iconUrl},
+         #{summary}, #{description}, #{supportedOsTypes}, #{supportedArchs}, #{screenshots},
+         #{status}, #{isOfficial}, #{isFeatured}, #{sortWeight}, #{downloadCount},
+         #{ratingScore}, #{ratingCount}, #{publishedAt}, #{rejectedAt}, #{createdAt},
+         #{updatedAt}, #{createdBy}, #{updatedBy})
+    </insert>
+
+    <insert id="insertVersion" parameterType="com.xcappstore.admin.software.entity.AppVersionEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO app_versions
+        (app_id, version_name, version_code, changelog, submit_source, status,
+         is_latest, submitted_at, reviewed_at, published_at, created_at, updated_at,
+         created_by, updated_by)
+        VALUES
+        (#{appId}, #{versionName}, #{versionCode}, #{changelog}, #{submitSource}, #{status},
+         #{isLatest}, #{submittedAt}, #{reviewedAt}, #{publishedAt}, #{createdAt}, #{updatedAt},
+         #{createdBy}, #{updatedBy})
+    </insert>
+
+    <insert id="insertPackage" parameterType="com.xcappstore.admin.software.entity.AppPackageEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO app_packages
+        (app_id, version_id, os_type, arch, package_format, file_name, file_size,
+         storage_path, cdn_url, sha256, status, download_count, scan_status,
+         scan_report, created_at, updated_at, created_by, updated_by)
+        VALUES
+        (#{appId}, #{versionId}, #{osType}, #{arch}, #{packageFormat}, #{fileName}, #{fileSize},
+         #{storagePath}, #{cdnUrl}, #{sha256}, #{status}, #{downloadCount}, #{scanStatus},
+         #{scanReport}, #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy})
+    </insert>
+
+    <insert id="insertAppTag">
+        INSERT IGNORE INTO app_tags
+        (app_id, tag_id, created_at)
+        VALUES
+        (#{appId}, #{tagId}, NOW(3))
+    </insert>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(1)
+        FROM apps a
+        WHERE <include refid="QueryWhere"/>
+    </select>
+
+    <select id="selectList" resultMap="SoftwareResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM apps a
+        <include refid="ListJoins"/>
+        WHERE <include refid="QueryWhere"/>
+        ORDER BY a.sort_weight DESC, a.updated_at DESC, a.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultMap="SoftwareResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM apps a
+        <include refid="ListJoins"/>
+        WHERE a.id = #{id}
+          AND a.deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <update id="updateStatus">
+        UPDATE apps
+        SET status = #{status},
+            published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="approveDraftVersions">
+        UPDATE app_versions
+        SET status = 2,
+            reviewed_at = #{reviewedAt},
+            published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+          AND status IN (0, 1)
+    </update>
+</mapper>

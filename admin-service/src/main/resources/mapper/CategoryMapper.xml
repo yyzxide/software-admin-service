@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.category.mapper.CategoryMapper">
+    <resultMap id="CategoryResultMap" type="com.xcappstore.admin.category.entity.CategoryEntity">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="description" property="description"/>
+        <result column="icon" property="icon"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="status" property="status"/>
+        <result column="is_builtin" property="isBuiltin"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="deleted_at" property="deletedAt"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, name, description, icon, parent_id, sort_order, status, is_builtin, created_at, updated_at, deleted_at
+    </sql>
+
+    <insert id="insert" parameterType="com.xcappstore.admin.category.entity.CategoryEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO categories
+        (name, description, icon, parent_id, sort_order, status, is_builtin, created_at, updated_at)
+        VALUES
+        (#{name}, #{description}, #{icon}, #{parentId}, #{sortOrder}, #{status}, #{isBuiltin}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="selectById" resultMap="CategoryResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM categories
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <select id="selectList" resultMap="CategoryResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM categories
+        WHERE deleted_at IS NULL
+        <choose>
+            <when test="parentId != null">
+                AND parent_id = #{parentId}
+            </when>
+            <otherwise>
+                AND parent_id IS NULL
+            </otherwise>
+        </choose>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectAll" resultMap="CategoryResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM categories
+        WHERE deleted_at IS NULL
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="countByName" resultType="long">
+        SELECT COUNT(1)
+        FROM categories
+        WHERE deleted_at IS NULL
+          AND name = #{name}
+        <if test="excludeId != null">
+          AND id &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <select id="countChildren" resultType="long">
+        SELECT COUNT(1)
+        FROM categories
+        WHERE deleted_at IS NULL
+          AND parent_id = #{parentId}
+    </select>
+
+    <select id="countApps" resultType="long">
+        SELECT COUNT(1)
+        FROM apps
+        WHERE deleted_at IS NULL
+          AND category_id = #{categoryId}
+    </select>
+
+    <update id="update" parameterType="com.xcappstore.admin.category.entity.CategoryEntity">
+        UPDATE categories
+        SET name = #{name},
+            description = #{description},
+            icon = #{icon},
+            parent_id = #{parentId},
+            sort_order = #{sortOrder},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="softDelete">
+        UPDATE categories
+        SET deleted_at = NOW(3),
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+</mapper>

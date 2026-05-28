@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.tag.mapper.TagMapper">
+    <resultMap id="TagResultMap" type="com.xcappstore.admin.tag.entity.TagEntity">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="description" property="description"/>
+        <result column="is_hot" property="isHot"/>
+        <result column="is_builtin" property="isBuiltin"/>
+        <result column="app_count" property="appCount"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        t.id, t.name, t.description, t.is_hot, t.is_builtin, t.created_at,
+        COALESCE(usage_stats.app_count, 0) AS app_count
+    </sql>
+
+    <sql id="UsageJoin">
+        LEFT JOIN (
+            SELECT tag_id, COUNT(1) AS app_count
+            FROM app_tags
+            GROUP BY tag_id
+        ) usage_stats ON usage_stats.tag_id = t.id
+    </sql>
+
+    <insert id="insert" parameterType="com.xcappstore.admin.tag.entity.TagEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO tags
+        (name, description, is_hot, is_builtin, created_at)
+        VALUES
+        (#{name}, #{description}, #{isHot}, #{isBuiltin}, #{createdAt})
+    </insert>
+
+    <select id="selectById" resultMap="TagResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM tags t
+        <include refid="UsageJoin"/>
+        WHERE t.id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectList" resultMap="TagResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM tags t
+        <include refid="UsageJoin"/>
+        WHERE 1 = 1
+        <if test="isHot != null">
+            AND t.is_hot = #{isHot}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (t.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY t.is_hot DESC, t.created_at DESC, t.id DESC
+    </select>
+
+    <select id="countByName" resultType="long">
+        SELECT COUNT(1)
+        FROM tags
+        WHERE name = #{name}
+        <if test="excludeId != null">
+          AND id &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <select id="countApps" resultType="long">
+        SELECT COUNT(1)
+        FROM app_tags
+        WHERE tag_id = #{tagId}
+    </select>
+
+    <update id="update" parameterType="com.xcappstore.admin.tag.entity.TagEntity">
+        UPDATE tags
+        SET name = #{name},
+            description = #{description},
+            is_hot = #{isHot}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM tags
+        WHERE id = #{id}
+    </delete>
+</mapper>
