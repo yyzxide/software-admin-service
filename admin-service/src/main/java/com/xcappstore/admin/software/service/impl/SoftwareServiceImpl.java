@@ -5,9 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
+import com.xcappstore.admin.software.dto.AppPackageResponse;
+import com.xcappstore.admin.software.dto.AppVersionResponse;
+import com.xcappstore.admin.software.dto.PackageAppendRequest;
 import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
+import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
+import com.xcappstore.admin.software.dto.VersionCreateRequest;
 import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
@@ -21,7 +26,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -185,6 +192,47 @@ public class SoftwareServiceImpl implements SoftwareService {
 
     @Override
     @Transactional
+    public SoftwareResponse update(Long id, SoftwareUpdateRequest request, Long adminUserId) {
+        SoftwareEntity current = requireSoftware(id);
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        if (softwareMapper.countCategory(request.getCategoryId()) == 0) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "分类不存在或已禁用");
+        }
+
+        List<Long> tagIds = parseTagIds(request.getTagIds());
+        validateTags(tagIds);
+
+        SoftwareEntity updated = new SoftwareEntity();
+        updated.setId(current.getId());
+        updated.setName(normalizeText(request.getName()));
+        updated.setCategoryId(request.getCategoryId());
+        updated.setIconUrl(defaultText(normalizeText(request.getIconUrl()), ""));
+        updated.setSummary(normalizeText(request.getSummary()));
+        updated.setDescription(normalizeText(request.getDescription()));
+        updated.setSupportedOsTypes(defaultText(normalizeCsv(request.getSupportedOsTypes()), current.getSupportedOsTypes()));
+        updated.setSupportedArchs(defaultText(normalizeCsv(request.getSupportedArchs()), current.getSupportedArchs()));
+        updated.setScreenshots(
+            StringUtils.hasText(request.getScreenshots())
+                ? normalizeScreenshots(request.getScreenshots())
+                : current.getScreenshots()
+        );
+        updated.setIsOfficial(normalizeFlag(request.getIsOfficial(), current.getIsOfficial(), "官方标记只能是0或1"));
+        updated.setIsFeatured(normalizeFlag(request.getIsFeatured(), current.getIsFeatured(), "推荐标记只能是0或1"));
+        updated.setSortWeight(request.getSortWeight() == null ? current.getSortWeight() : request.getSortWeight());
+        updated.setUpdatedBy(operatorId);
+
+        softwareMapper.updateAppMetadata(updated);
+        softwareMapper.deleteAppTags(id);
+        for (Long tagId : tagIds) {
+            softwareMapper.insertAppTag(id, tagId);
+        }
+
+        softwareCacheService.invalidateDetail(id);
+        return detail(id);
+    }
+
+    @Override
+    @Transactional
     public SoftwareResponse publish(Long id, Long adminUserId) {
         SoftwareEntity app = requireSoftware(id);
         if (!PUBLISHABLE_STATUSES.contains(app.getStatus())) {
@@ -211,6 +259,140 @@ public class SoftwareServiceImpl implements SoftwareService {
         return detail(id);
     }
 
+    @Override
+    @Transactional
+    public AppVersionResponse addVersion(Long appId, VersionCreateRequest request, Long adminUserId) {
+        SoftwareEntity app = requireSoftware(appId);
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        String osType = requireAllowed(normalizeText(request.getOsType()), ALLOWED_OS_TYPES, "系统类型不支持");
+        String arch = requireAllowed(normalizeText(request.getArch()), ALLOWED_ARCHS, "CPU架构不支持");
+        String packageFormat = requireAllowed(normalizeText(request.getPackageFormat()), ALLOWED_PACKAGE_FORMATS, "安装包格式不支持");
+        Long versionCode = request.getVersionCode() == null ? System.currentTimeMillis() / 1000 : request.getVersionCode();
+        if (versionCode <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "版本号必须大于0");
+        }
+        if (softwareMapper.countVersionCode(appId, versionCode) > 0) {
+            throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "版本号已存在");
+        }
+
+        boolean publishNow = Boolean.TRUE.equals(request.getPublishNow());
+        PackageFileStorageService.StoredPackage storedPackage = packageFileStorageService.store(request.getPackageFile());
+        LocalDateTime now = LocalDateTime.now();
+
+        if (publishNow) {
+            softwareMapper.markVersionsNotLatest(appId, operatorId);
+        }
+
+        AppVersionEntity version = new AppVersionEntity();
+        version.setAppId(appId);
+        version.setVersionName(normalizeText(request.getVersionName()));
+        version.setVersionCode(versionCode);
+        version.setChangelog(normalizeText(request.getChangelog()));
+        version.setSubmitSource(SUBMIT_SOURCE_ADMIN);
+        version.setStatus(publishNow ? VERSION_STATUS_APPROVED : VERSION_STATUS_DRAFT);
+        version.setIsLatest(publishNow ? 1 : 0);
+        version.setSubmittedAt(now);
+        version.setReviewedAt(publishNow ? now : null);
+        version.setPublishedAt(publishNow ? now : null);
+        version.setCreatedAt(now);
+        version.setUpdatedAt(now);
+        version.setCreatedBy(operatorId);
+        version.setUpdatedBy(operatorId);
+        softwareMapper.insertVersion(version);
+
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setAppId(appId);
+        packageInfo.setVersionId(version.getId());
+        packageInfo.setOsType(osType);
+        packageInfo.setArch(arch);
+        packageInfo.setPackageFormat(packageFormat);
+        packageInfo.setFileName(storedPackage.fileName());
+        packageInfo.setFileSize(storedPackage.fileSize());
+        packageInfo.setStoragePath(storedPackage.storagePath());
+        packageInfo.setSha256(storedPackage.sha256());
+        packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
+        packageInfo.setDownloadCount(0L);
+        packageInfo.setScanStatus(0);
+        packageInfo.setCreatedAt(now);
+        packageInfo.setUpdatedAt(now);
+        packageInfo.setCreatedBy(operatorId);
+        packageInfo.setUpdatedBy(operatorId);
+        softwareMapper.insertPackage(packageInfo);
+
+        if (publishNow) {
+            softwareMapper.updateStatus(app.getId(), STATUS_PUBLISHED, now, operatorId);
+        }
+
+        softwareCacheService.invalidateDetail(appId);
+        AppVersionResponse response = toVersionResponse(version);
+        response.setPackages(List.of(toPackageResponse(packageInfo)));
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public AppPackageResponse addPackage(Long appId, Long versionId, PackageAppendRequest request, Long adminUserId) {
+        requireSoftware(appId);
+        requireVersion(appId, versionId);
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        String osType = requireAllowed(normalizeText(request.getOsType()), ALLOWED_OS_TYPES, "系统类型不支持");
+        String arch = requireAllowed(normalizeText(request.getArch()), ALLOWED_ARCHS, "CPU架构不支持");
+        String packageFormat = requireAllowed(normalizeText(request.getPackageFormat()), ALLOWED_PACKAGE_FORMATS, "安装包格式不支持");
+        if (softwareMapper.countPackageVariant(versionId, osType, arch) > 0) {
+            throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该版本已存在相同系统和架构的安装包");
+        }
+
+        PackageFileStorageService.StoredPackage storedPackage = packageFileStorageService.store(request.getPackageFile());
+        LocalDateTime now = LocalDateTime.now();
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setAppId(appId);
+        packageInfo.setVersionId(versionId);
+        packageInfo.setOsType(osType);
+        packageInfo.setArch(arch);
+        packageInfo.setPackageFormat(packageFormat);
+        packageInfo.setFileName(storedPackage.fileName());
+        packageInfo.setFileSize(storedPackage.fileSize());
+        packageInfo.setStoragePath(storedPackage.storagePath());
+        packageInfo.setSha256(storedPackage.sha256());
+        packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
+        packageInfo.setDownloadCount(0L);
+        packageInfo.setScanStatus(0);
+        packageInfo.setCreatedAt(now);
+        packageInfo.setUpdatedAt(now);
+        packageInfo.setCreatedBy(operatorId);
+        packageInfo.setUpdatedBy(operatorId);
+        softwareMapper.insertPackage(packageInfo);
+
+        softwareCacheService.invalidateDetail(appId);
+        return toPackageResponse(packageInfo);
+    }
+
+    @Override
+    public List<AppVersionResponse> versions(Long appId) {
+        requireSoftware(appId);
+        Map<Long, List<AppPackageResponse>> packagesByVersion = softwareMapper.selectPackagesByAppId(appId)
+            .stream()
+            .map(this::toPackageResponse)
+            .collect(Collectors.groupingBy(AppPackageResponse::getVersionId));
+        return softwareMapper.selectVersionsByAppId(appId)
+            .stream()
+            .map(version -> {
+                AppVersionResponse response = toVersionResponse(version);
+                response.setPackages(packagesByVersion.getOrDefault(version.getId(), List.of()));
+                return response;
+            })
+            .toList();
+    }
+
+    @Override
+    public List<AppPackageResponse> packages(Long appId) {
+        requireSoftware(appId);
+        return softwareMapper.selectPackagesByAppId(appId)
+            .stream()
+            .map(this::toPackageResponse)
+            .toList();
+    }
+
     private SoftwareEntity requireSoftware(Long id) {
         requireValidId(id);
         SoftwareEntity software = softwareMapper.selectById(id);
@@ -218,6 +400,15 @@ public class SoftwareServiceImpl implements SoftwareService {
             throw new BusinessException(ErrorCode.SOFTWARE_NOT_FOUND, "软件不存在");
         }
         return software;
+    }
+
+    private AppVersionEntity requireVersion(Long appId, Long versionId) {
+        requireValidId(versionId);
+        AppVersionEntity version = softwareMapper.selectVersionById(versionId);
+        if (version == null || !appId.equals(version.getAppId())) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "版本不存在");
+        }
+        return version;
     }
 
     private void requireValidId(Long id) {
@@ -291,6 +482,16 @@ public class SoftwareServiceImpl implements SoftwareService {
         return StringUtils.hasText(value) ? value : defaultValue;
     }
 
+    private Integer normalizeFlag(Integer value, Integer defaultValue, String message) {
+        if (value == null) {
+            return defaultValue == null ? 0 : defaultValue;
+        }
+        if (value != 0 && value != 1) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, message);
+        }
+        return value;
+    }
+
     private String normalizeCsv(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -351,6 +552,49 @@ public class SoftwareServiceImpl implements SoftwareService {
         return response;
     }
 
+    private AppVersionResponse toVersionResponse(AppVersionEntity entity) {
+        AppVersionResponse response = new AppVersionResponse();
+        response.setId(entity.getId());
+        response.setAppId(entity.getAppId());
+        response.setVersionName(entity.getVersionName());
+        response.setVersionCode(entity.getVersionCode());
+        response.setChangelog(entity.getChangelog());
+        response.setSubmitSource(entity.getSubmitSource());
+        response.setStatus(entity.getStatus());
+        response.setStatusText(versionStatusText(entity.getStatus()));
+        response.setIsLatest(entity.getIsLatest());
+        response.setSubmittedAt(entity.getSubmittedAt());
+        response.setReviewedAt(entity.getReviewedAt());
+        response.setPublishedAt(entity.getPublishedAt());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        return response;
+    }
+
+    private AppPackageResponse toPackageResponse(AppPackageEntity entity) {
+        AppPackageResponse response = new AppPackageResponse();
+        response.setId(entity.getId());
+        response.setAppId(entity.getAppId());
+        response.setVersionId(entity.getVersionId());
+        response.setOsType(entity.getOsType());
+        response.setArch(entity.getArch());
+        response.setPackageFormat(entity.getPackageFormat());
+        response.setFileName(entity.getFileName());
+        response.setFileSize(entity.getFileSize());
+        response.setStoragePath(entity.getStoragePath());
+        response.setCdnUrl(entity.getCdnUrl());
+        response.setSha256(entity.getSha256());
+        response.setStatus(entity.getStatus());
+        response.setStatusText(packageStatusText(entity.getStatus()));
+        response.setDownloadCount(entity.getDownloadCount());
+        response.setScanStatus(entity.getScanStatus());
+        response.setScanStatusText(scanStatusText(entity.getScanStatus()));
+        response.setScanReport(entity.getScanReport());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        return response;
+    }
+
     private List<String> splitCsv(String value) {
         if (!StringUtils.hasText(value)) {
             return List.of();
@@ -382,6 +626,44 @@ public class SoftwareServiceImpl implements SoftwareService {
             case STATUS_PUBLISHED -> "已上架";
             case STATUS_UNPUBLISHED -> "已下架";
             case STATUS_REJECTED -> "审核驳回";
+            default -> "未知";
+        };
+    }
+
+    private String versionStatusText(Integer status) {
+        if (status == null) {
+            return "未知";
+        }
+        return switch (status) {
+            case VERSION_STATUS_DRAFT -> "草稿";
+            case 1 -> "审核中";
+            case VERSION_STATUS_APPROVED -> "已通过";
+            case 3 -> "审核驳回";
+            case 4 -> "已下架";
+            default -> "未知";
+        };
+    }
+
+    private String packageStatusText(Integer status) {
+        if (status == null) {
+            return "未知";
+        }
+        return switch (status) {
+            case 0 -> "上传中";
+            case PACKAGE_STATUS_AVAILABLE -> "可用";
+            case 2 -> "已删除";
+            default -> "未知";
+        };
+    }
+
+    private String scanStatusText(Integer status) {
+        if (status == null) {
+            return "未知";
+        }
+        return switch (status) {
+            case 0 -> "未扫描";
+            case 1 -> "安全";
+            case 2 -> "有风险";
             default -> "未知";
         };
     }

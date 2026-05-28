@@ -7,9 +7,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
+import com.xcappstore.admin.software.dto.AppPackageResponse;
+import com.xcappstore.admin.software.dto.AppVersionResponse;
+import com.xcappstore.admin.software.dto.PackageAppendRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
+import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
 import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
+import com.xcappstore.admin.software.dto.VersionCreateRequest;
 import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
@@ -119,6 +124,82 @@ class SoftwareServiceImplTest {
         assertEquals("fake-sha256", softwareMapper.packages.values().iterator().next().getSha256());
     }
 
+    @Test
+    void updatesSoftwareMetadataAndTags() {
+        softwareMapper.categoryCount = 1L;
+        softwareMapper.tagCounts.put(2L, 1L);
+        softwareMapper.apps.put(1L, app(1L, "旧名称", 0));
+
+        SoftwareUpdateRequest request = new SoftwareUpdateRequest();
+        request.setName("新名称");
+        request.setCategoryId(1L);
+        request.setSummary("新摘要");
+        request.setDescription("新描述");
+        request.setSupportedOsTypes("uos_v20,kylin_v10");
+        request.setSupportedArchs("x86_64");
+        request.setTagIds("2");
+        request.setIsFeatured(1);
+        request.setSortWeight(20);
+
+        SoftwareResponse response = softwareService.update(1L, request, 99L);
+
+        assertEquals("新名称", response.getName());
+        assertEquals(99L, softwareMapper.apps.get(1L).getUpdatedBy());
+        assertEquals(1, softwareMapper.deletedAppTagCount);
+        assertEquals(1, softwareMapper.appTagCount);
+        assertEquals(1, softwareCacheService.invalidateCount);
+    }
+
+    @Test
+    void appendsPublishedVersionAndPackage() {
+        softwareMapper.apps.put(1L, app(1L, "版本软件", 3));
+
+        VersionCreateRequest request = new VersionCreateRequest();
+        request.setVersionName("2.0.0");
+        request.setVersionCode(200L);
+        request.setChangelog("新增版本");
+        request.setOsType("uos_v20");
+        request.setArch("x86_64");
+        request.setPackageFormat("deb");
+        request.setPublishNow(true);
+        request.setPackageFile(new MockMultipartFile("package_file", "editor-2.deb", "application/octet-stream", "deb".getBytes()));
+
+        AppVersionResponse response = softwareService.addVersion(1L, request, 99L);
+
+        assertEquals("2.0.0", response.getVersionName());
+        assertEquals(2, response.getStatus());
+        assertEquals(1, response.getIsLatest());
+        assertEquals(1, response.getPackages().size());
+        assertEquals(2, softwareMapper.apps.get(1L).getStatus());
+        assertEquals(1, softwareMapper.markNotLatestCount);
+    }
+
+    @Test
+    void appendsPackageVariantToExistingVersion() {
+        softwareMapper.apps.put(1L, app(1L, "多架构软件", 2));
+        AppVersionEntity version = new AppVersionEntity();
+        version.setId(10L);
+        version.setAppId(1L);
+        version.setVersionName("1.0.0");
+        version.setVersionCode(100L);
+        version.setStatus(2);
+        version.setIsLatest(1);
+        softwareMapper.versions.put(10L, version);
+
+        PackageAppendRequest request = new PackageAppendRequest();
+        request.setOsType("uos_v20");
+        request.setArch("aarch64");
+        request.setPackageFormat("deb");
+        request.setPackageFile(new MockMultipartFile("package_file", "editor-arm.deb", "application/octet-stream", "deb".getBytes()));
+
+        AppPackageResponse response = softwareService.addPackage(1L, 10L, request, 99L);
+
+        assertEquals(10L, response.getVersionId());
+        assertEquals("aarch64", response.getArch());
+        assertEquals("可用", response.getStatusText());
+        assertEquals(1, softwareMapper.packages.size());
+    }
+
     private SoftwareEntity app(Long id, String name, Integer status) {
         SoftwareEntity app = new SoftwareEntity();
         app.setId(id);
@@ -158,6 +239,8 @@ class SoftwareServiceImplTest {
         private long nextPackageId = 1L;
         private int approvedVersionCount;
         private int appTagCount;
+        private int deletedAppTagCount;
+        private int markNotLatestCount;
 
         @Override
         public long countByAppKey(String appKey) {
@@ -216,6 +299,78 @@ class SoftwareServiceImplTest {
         @Override
         public SoftwareEntity selectById(Long id) {
             return apps.get(id);
+        }
+
+        @Override
+        public int updateAppMetadata(SoftwareEntity app) {
+            SoftwareEntity current = apps.get(app.getId());
+            current.setName(app.getName());
+            current.setCategoryId(app.getCategoryId());
+            current.setIconUrl(app.getIconUrl());
+            current.setSummary(app.getSummary());
+            current.setDescription(app.getDescription());
+            current.setSupportedOsTypes(app.getSupportedOsTypes());
+            current.setSupportedArchs(app.getSupportedArchs());
+            current.setScreenshots(app.getScreenshots());
+            current.setIsOfficial(app.getIsOfficial());
+            current.setIsFeatured(app.getIsFeatured());
+            current.setSortWeight(app.getSortWeight());
+            current.setUpdatedBy(app.getUpdatedBy());
+            return 1;
+        }
+
+        @Override
+        public int deleteAppTags(Long appId) {
+            deletedAppTagCount++;
+            return 1;
+        }
+
+        @Override
+        public long countVersionCode(Long appId, Long versionCode) {
+            return versions.values().stream()
+                .filter(version -> appId.equals(version.getAppId()))
+                .filter(version -> versionCode.equals(version.getVersionCode()))
+                .count();
+        }
+
+        @Override
+        public long countPackageVariant(Long versionId, String osType, String arch) {
+            return packages.values().stream()
+                .filter(packageInfo -> versionId.equals(packageInfo.getVersionId()))
+                .filter(packageInfo -> osType.equals(packageInfo.getOsType()))
+                .filter(packageInfo -> arch.equals(packageInfo.getArch()))
+                .count();
+        }
+
+        @Override
+        public int markVersionsNotLatest(Long appId, Long updatedBy) {
+            versions.values().stream()
+                .filter(version -> appId.equals(version.getAppId()))
+                .forEach(version -> {
+                    version.setIsLatest(0);
+                    version.setUpdatedBy(updatedBy);
+                });
+            markNotLatestCount++;
+            return 1;
+        }
+
+        @Override
+        public AppVersionEntity selectVersionById(Long versionId) {
+            return versions.get(versionId);
+        }
+
+        @Override
+        public List<AppVersionEntity> selectVersionsByAppId(Long appId) {
+            return versions.values().stream()
+                .filter(version -> appId.equals(version.getAppId()))
+                .toList();
+        }
+
+        @Override
+        public List<AppPackageEntity> selectPackagesByAppId(Long appId) {
+            return packages.values().stream()
+                .filter(packageInfo -> appId.equals(packageInfo.getAppId()))
+                .toList();
         }
 
         @Override

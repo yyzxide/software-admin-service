@@ -24,6 +24,10 @@ Backend:
 - Tag module is implemented.
 - Software list/detail query is implemented.
 - Software upload writes app/version/package/tag metadata in one transaction.
+- Software edit updates app metadata, category, tags, display flags, and sort weight.
+- Version append writes new version/package metadata in one transaction.
+- Package append supports adding OS/CPU architecture variants to an existing version.
+- Version list and package list APIs are implemented.
 - Publish and unpublish state transitions are implemented.
 - MyBatis XML mappers are in place.
 - Redis cache integration exists for category/tag/software detail.
@@ -40,7 +44,7 @@ Frontend:
 Tests:
 
 - Java unit/controller tests pass.
-- Current count: 20 tests.
+- Current count: 23 admin-service tests.
 
 ## Known Problems
 
@@ -49,7 +53,6 @@ These are acceptable for the current cleanup stage:
 - Upload flow may still need real environment verification with MySQL and Redis.
 - UI is still a lightweight verification page, not a polished production admin console.
 - Operation log is not merged into `admin-service` yet.
-- Software edit/version append/package append are not implemented.
 - Docker Compose currently starts MySQL and Redis only; the backend is usually run locally with Maven.
 - Native Windows is possible, but WSL is the safer route.
 
@@ -57,12 +60,10 @@ These are acceptable for the current cleanup stage:
 
 1. Stabilize local/WSL setup.
 2. Verify upload against `db_java_software_admin`.
-3. Add software edit.
-4. Add version/package append.
-5. Add operation audit write.
-6. Improve admin UI density and workflow.
-7. Add API documentation and curl test scripts.
-8. Add Docker image/deployment notes.
+3. Add operation audit write.
+4. Improve admin UI density and workflow.
+5. Add API documentation and curl test scripts.
+6. Add Docker image/deployment notes.
 
 ## GitHub Preparation
 

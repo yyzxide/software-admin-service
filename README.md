@@ -33,6 +33,10 @@ Implemented:
 - Software list/detail query with filters.
 - Multipart package upload with local file save and SHA256 calculation.
 - Transactional writes to `apps`, `app_versions`, `app_packages`, and `app_tags`.
+- Software metadata edit with category/tag replacement and cache invalidation.
+- Version append with package upload, SHA256 calculation, latest-version handling, and optional immediate publish.
+- Package variant append for existing versions, covering different OS/CPU architecture combinations.
+- Version list and package list query APIs.
 - Publish/unpublish state transition.
 - Independent MySQL schema: `db_java_software_admin`.
 - Static `admin-ui` for browser verification.
@@ -41,9 +45,6 @@ Implemented:
 
 Known incomplete areas:
 
-- Software edit.
-- Version append.
-- Package append.
 - Operation audit write.
 - Review workflow.
 - Chunk upload.
@@ -161,6 +162,12 @@ Current progress and next steps:
 
 ```text
 docs/status-and-next-steps.md
+```
+
+Admin software API notes:
+
+```text
+docs/admin-software-api.md
 ```
 
 ## GitHub

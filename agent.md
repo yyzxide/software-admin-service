@@ -43,10 +43,14 @@ java-software-admin-service/
 - 已完成标签管理：CRUD、热门标签、热门切换、删除校验、唯一性校验、Redis 缓存失效。
 - 已完成软件后台查询：分页、详情、多条件筛选、分类名、标签名、最新版本、安装包数量、状态文案。
 - 已完成软件上传基础链路：multipart 上传、本地保存、SHA256、`apps/app_versions/app_packages/app_tags` 多表事务写入。
+- 已完成软件编辑：基础信息、分类、标签、官方/推荐标记、排序权重、缓存失效。
+- 已完成版本追加：新增版本 + 新安装包上传 + SHA256 + 最新版本处理 + 可选立即上架。
+- 已完成安装包变体追加：可给已有版本补充不同 OS/CPU 架构安装包。
+- 已完成版本列表和安装包列表查询接口。
 - 已完成上架/下架基础状态流转。
 - 已完成独立数据库 `db_java_software_admin`，脚本在 `database/mysql/001_init_admin_schema.sql`。
 - 已完成静态 `admin-ui`，用于登录、软件列表/详情/上传、分类、标签、本地联调。
-- 当前测试：`make test` 通过，20 个测试。
+- 当前测试：`make test` 通过，23 个 admin-service 测试。
 
 ## Known Issues
 
@@ -58,7 +62,7 @@ java-software-admin-service/
 
 - 后续主线是 `admin-service`。
 - 表结构由本项目自己维护，不再兼容原项目多套历史表结构。
-- 优先补强 Java 后端面试可讲内容：软件编辑、版本管理、安装包管理、操作日志写入、事务、动态 SQL、Redis、接口测试。
+- 优先补强 Java 后端面试可讲内容：操作日志写入、审核状态流转、事务、动态 SQL、Redis、接口测试。
 - 前端目标是“能演示后台闭环”，不追求生产级复杂前端。
 
 ## Roadmap
@@ -66,11 +70,9 @@ java-software-admin-service/
 1. 稳定本地/WSL 运行环境。
 2. 验证 `make docker-up -> make init-db -> make run`。
 3. 修复上传链路实际环境 bug。
-4. 补软件编辑。
-5. 补版本追加和安装包追加。
-6. 补操作日志写入。
-7. 补接口文档和 curl 测试脚本。
-8. 优化 `admin-ui`，让它更像真实后台。
+4. 补操作日志写入。
+5. 补接口文档和 curl 测试脚本。
+6. 优化 `admin-ui`，让它更像真实后台。
 
 ## Commands
 

@@ -35,6 +35,26 @@ public interface SoftwareMapper {
 
     SoftwareEntity selectById(@Param("id") Long id);
 
+    int updateAppMetadata(SoftwareEntity app);
+
+    int deleteAppTags(@Param("appId") Long appId);
+
+    long countVersionCode(@Param("appId") Long appId, @Param("versionCode") Long versionCode);
+
+    long countPackageVariant(
+        @Param("versionId") Long versionId,
+        @Param("osType") String osType,
+        @Param("arch") String arch
+    );
+
+    int markVersionsNotLatest(@Param("appId") Long appId, @Param("updatedBy") Long updatedBy);
+
+    AppVersionEntity selectVersionById(@Param("versionId") Long versionId);
+
+    List<AppVersionEntity> selectVersionsByAppId(@Param("appId") Long appId);
+
+    List<AppPackageEntity> selectPackagesByAppId(@Param("appId") Long appId);
+
     int updateStatus(
         @Param("id") Long id,
         @Param("status") Integer status,

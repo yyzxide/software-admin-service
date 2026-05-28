@@ -35,6 +35,46 @@
         <result column="tag_names" property="tagNames"/>
     </resultMap>
 
+    <resultMap id="AppVersionResultMap" type="com.xcappstore.admin.software.entity.AppVersionEntity">
+        <id column="id" property="id"/>
+        <result column="app_id" property="appId"/>
+        <result column="version_name" property="versionName"/>
+        <result column="version_code" property="versionCode"/>
+        <result column="changelog" property="changelog"/>
+        <result column="submit_source" property="submitSource"/>
+        <result column="status" property="status"/>
+        <result column="is_latest" property="isLatest"/>
+        <result column="submitted_at" property="submittedAt"/>
+        <result column="reviewed_at" property="reviewedAt"/>
+        <result column="published_at" property="publishedAt"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="created_by" property="createdBy"/>
+        <result column="updated_by" property="updatedBy"/>
+    </resultMap>
+
+    <resultMap id="AppPackageResultMap" type="com.xcappstore.admin.software.entity.AppPackageEntity">
+        <id column="id" property="id"/>
+        <result column="app_id" property="appId"/>
+        <result column="version_id" property="versionId"/>
+        <result column="os_type" property="osType"/>
+        <result column="arch" property="arch"/>
+        <result column="package_format" property="packageFormat"/>
+        <result column="file_name" property="fileName"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="storage_path" property="storagePath"/>
+        <result column="cdn_url" property="cdnUrl"/>
+        <result column="sha256" property="sha256"/>
+        <result column="status" property="status"/>
+        <result column="download_count" property="downloadCount"/>
+        <result column="scan_status" property="scanStatus"/>
+        <result column="scan_report" property="scanReport"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="created_by" property="createdBy"/>
+        <result column="updated_by" property="updatedBy"/>
+    </resultMap>
+
     <sql id="BaseColumns">
         a.id, a.app_key, a.name, a.developer_id, a.submit_source, a.category_id,
         c.name AS category_name,
@@ -185,6 +225,87 @@
         WHERE a.id = #{id}
           AND a.deleted_at IS NULL
         LIMIT 1
+    </select>
+
+    <update id="updateAppMetadata" parameterType="com.xcappstore.admin.software.entity.SoftwareEntity">
+        UPDATE apps
+        SET name = #{name},
+            category_id = #{categoryId},
+            icon_url = #{iconUrl},
+            summary = #{summary},
+            description = #{description},
+            supported_os_types = #{supportedOsTypes},
+            supported_archs = #{supportedArchs},
+            screenshots = #{screenshots},
+            is_official = #{isOfficial},
+            is_featured = #{isFeatured},
+            sort_weight = #{sortWeight},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <delete id="deleteAppTags">
+        DELETE FROM app_tags
+        WHERE app_id = #{appId}
+    </delete>
+
+    <select id="countVersionCode" resultType="long">
+        SELECT COUNT(1)
+        FROM app_versions
+        WHERE app_id = #{appId}
+          AND version_code = #{versionCode}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="countPackageVariant" resultType="long">
+        SELECT COUNT(1)
+        FROM app_packages
+        WHERE version_id = #{versionId}
+          AND os_type = #{osType}
+          AND arch = #{arch}
+          AND deleted_at IS NULL
+    </select>
+
+    <update id="markVersionsNotLatest">
+        UPDATE app_versions
+        SET is_latest = 0,
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+          AND is_latest = 1
+    </update>
+
+    <select id="selectVersionById" resultMap="AppVersionResultMap">
+        SELECT id, app_id, version_name, version_code, changelog, submit_source,
+               status, is_latest, submitted_at, reviewed_at, published_at,
+               created_at, updated_at, created_by, updated_by
+        FROM app_versions
+        WHERE id = #{versionId}
+          AND deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <select id="selectVersionsByAppId" resultMap="AppVersionResultMap">
+        SELECT id, app_id, version_name, version_code, changelog, submit_source,
+               status, is_latest, submitted_at, reviewed_at, published_at,
+               created_at, updated_at, created_by, updated_by
+        FROM app_versions
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+        ORDER BY is_latest DESC, version_code DESC, id DESC
+    </select>
+
+    <select id="selectPackagesByAppId" resultMap="AppPackageResultMap">
+        SELECT id, app_id, version_id, os_type, arch, package_format, file_name,
+               file_size, storage_path, cdn_url, sha256, status, download_count,
+               scan_status, scan_report, created_at, updated_at, created_by, updated_by
+        FROM app_packages
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
     </select>
 
     <update id="updateStatus">

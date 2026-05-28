@@ -113,6 +113,10 @@ Implemented:
 - Tag management.
 - Software upload.
 - Software list/detail query.
+- Software edit.
+- Version append with package upload.
+- Existing-version package variant append.
+- Version/package metadata query.
 - Publish/unpublish flow.
 - MySQL schema.
 - Redis integration points.
@@ -121,9 +125,6 @@ Implemented:
 
 Not implemented yet:
 
-- Software edit.
-- Version append.
-- Package append.
 - Real operation audit write.
 - Review workflow.
 - Chunk upload.

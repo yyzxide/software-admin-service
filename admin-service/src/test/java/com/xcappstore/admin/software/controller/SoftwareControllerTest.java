@@ -7,9 +7,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xcappstore.admin.common.PageResponse;
+import com.xcappstore.admin.software.dto.AppPackageResponse;
+import com.xcappstore.admin.software.dto.AppVersionResponse;
+import com.xcappstore.admin.software.dto.PackageAppendRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
+import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
 import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
+import com.xcappstore.admin.software.dto.VersionCreateRequest;
 import com.xcappstore.admin.software.service.SoftwareService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -91,6 +96,11 @@ class SoftwareControllerTest {
         }
 
         @Override
+        public SoftwareResponse update(Long id, SoftwareUpdateRequest request, Long adminUserId) {
+            return null;
+        }
+
+        @Override
         public SoftwareResponse publish(Long id, Long adminUserId) {
             return null;
         }
@@ -98,6 +108,26 @@ class SoftwareControllerTest {
         @Override
         public SoftwareResponse unpublish(Long id, Long adminUserId) {
             return null;
+        }
+
+        @Override
+        public AppVersionResponse addVersion(Long appId, VersionCreateRequest request, Long adminUserId) {
+            return null;
+        }
+
+        @Override
+        public AppPackageResponse addPackage(Long appId, Long versionId, PackageAppendRequest request, Long adminUserId) {
+            return null;
+        }
+
+        @Override
+        public List<AppVersionResponse> versions(Long appId) {
+            return List.of();
+        }
+
+        @Override
+        public List<AppPackageResponse> packages(Long appId) {
+            return List.of();
         }
     }
 }
