@@ -14,7 +14,7 @@ public class AdminModuleController {
     public ApiResponse<Map<String, Object>> modules() {
         return ApiResponse.success(Map.of(
             "service", "java-software-admin-service",
-            "modules", List.of("category", "tag", "software", "version", "packageinfo", "operationlog")
+            "modules", List.of("auth", "rbac", "category", "tag", "software", "review", "operationlog")
         ));
     }
 }

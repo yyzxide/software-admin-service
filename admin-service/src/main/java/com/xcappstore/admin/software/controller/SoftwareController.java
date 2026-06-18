@@ -2,6 +2,7 @@ package com.xcappstore.admin.software.controller;
 
 import com.xcappstore.admin.auth.AdminAuthInterceptor;
 import com.xcappstore.admin.auth.AdminPrincipal;
+import com.xcappstore.admin.auth.rbac.RequirePermission;
 import com.xcappstore.admin.common.ApiResponse;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/admin/software/apps")
+@RequirePermission("software:view")
 public class SoftwareController {
     private final SoftwareService softwareService;
 
@@ -44,6 +46,7 @@ public class SoftwareController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("software:create")
     public ApiResponse<SoftwareResponse> upload(
         @Valid @ModelAttribute SoftwareUploadRequest request,
         HttpServletRequest servletRequest
@@ -57,6 +60,7 @@ public class SoftwareController {
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("software:update")
     public ApiResponse<SoftwareResponse> update(
         @PathVariable Long id,
         @Valid @RequestBody SoftwareUpdateRequest request,
@@ -66,6 +70,7 @@ public class SoftwareController {
     }
 
     @PostMapping("/{id}/publish")
+    @RequirePermission("software:publish")
     public ApiResponse<SoftwareResponse> publish(
         @PathVariable Long id,
         @Valid @RequestBody(required = false) SoftwareStatusChangeRequest request,
@@ -75,6 +80,7 @@ public class SoftwareController {
     }
 
     @PostMapping("/{id}/unpublish")
+    @RequirePermission("software:unpublish")
     public ApiResponse<SoftwareResponse> unpublish(
         @PathVariable Long id,
         @Valid @RequestBody(required = false) SoftwareStatusChangeRequest request,
@@ -84,6 +90,7 @@ public class SoftwareController {
     }
 
     @PostMapping(value = "/{id}/versions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("software:version:create")
     public ApiResponse<AppVersionResponse> addVersion(
         @PathVariable Long id,
         @Valid @ModelAttribute VersionCreateRequest request,
@@ -93,6 +100,7 @@ public class SoftwareController {
     }
 
     @PostMapping(value = "/{id}/versions/{versionId}/packages", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("software:package:create")
     public ApiResponse<AppPackageResponse> addPackage(
         @PathVariable Long id,
         @PathVariable Long versionId,
@@ -117,10 +125,6 @@ public class SoftwareController {
         if (principal instanceof AdminPrincipal adminPrincipal) {
             return adminPrincipal.getUserId();
         }
-        try {
-            return Long.parseLong(request.getHeader("X-User-ID"));
-        } catch (Exception ex) {
-            return 0L;
-        }
+        return 0L;
     }
 }

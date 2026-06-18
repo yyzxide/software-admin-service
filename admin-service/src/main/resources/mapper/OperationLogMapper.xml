@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.operationlog.mapper.OperationLogMapper">
+    <resultMap id="OperationLogResultMap" type="com.xcappstore.admin.operationlog.entity.OperationLogEntity">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="user_type" property="userType"/>
+        <result column="username" property="username"/>
+        <result column="action" property="action"/>
+        <result column="resource_type" property="resourceType"/>
+        <result column="resource_id" property="resourceId"/>
+        <result column="resource_name" property="resourceName"/>
+        <result column="detail" property="detail"/>
+        <result column="ip" property="ip"/>
+        <result column="user_agent" property="userAgent"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, user_id, user_type, username, action, resource_type, resource_id, resource_name,
+        detail, ip, user_agent, created_at
+    </sql>
+
+    <sql id="OperationLogWhere">
+        <where>
+            <if test="query.userType != null and query.userType != ''">
+                AND user_type = #{query.userType}
+            </if>
+            <if test="query.action != null and query.action != ''">
+                AND action = #{query.action}
+            </if>
+            <if test="query.resourceType != null and query.resourceType != ''">
+                AND resource_type = #{query.resourceType}
+            </if>
+            <if test="query.username != null and query.username != ''">
+                AND username LIKE CONCAT('%', #{query.username}, '%')
+            </if>
+            <if test="query.ip != null and query.ip != ''">
+                AND ip LIKE CONCAT('%', #{query.ip}, '%')
+            </if>
+            <if test="query.detailKeyword != null and query.detailKeyword != ''">
+                AND detail LIKE CONCAT('%', #{query.detailKeyword}, '%')
+            </if>
+            <if test="query.resourceId != null">
+                AND resource_id = #{query.resourceId}
+            </if>
+            <if test="query.startTime != null and query.startTime != ''">
+                AND created_at &gt;= #{query.startTime}
+            </if>
+            <if test="query.endTime != null and query.endTime != ''">
+                AND created_at &lt;= #{query.endTime}
+            </if>
+        </where>
+    </sql>
+
+    <insert id="insert" parameterType="com.xcappstore.admin.operationlog.entity.OperationLogEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO operation_logs
+        (user_id, user_type, username, action, resource_type, resource_id, resource_name,
+         detail, ip, user_agent, created_at)
+        VALUES
+        (#{userId}, #{userType}, #{username}, #{action}, #{resourceType}, #{resourceId}, #{resourceName},
+         #{detail}, #{ip}, #{userAgent}, #{createdAt})
+    </insert>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(1)
+        FROM operation_logs
+        <include refid="OperationLogWhere"/>
+    </select>
+
+    <select id="selectPage" resultMap="OperationLogResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM operation_logs
+        <include refid="OperationLogWhere"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultMap="OperationLogResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM operation_logs
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectActions" resultType="string">
+        SELECT DISTINCT action
+        FROM operation_logs
+        WHERE action &lt;&gt; ''
+        ORDER BY action ASC
+    </select>
+
+    <select id="selectResourceTypes" resultType="string">
+        SELECT DISTINCT resource_type
+        FROM operation_logs
+        WHERE resource_type &lt;&gt; ''
+        ORDER BY resource_type ASC
+    </select>
+
+    <select id="countByAction" resultType="com.xcappstore.admin.operationlog.dto.StatItem">
+        SELECT action AS name, COUNT(1) AS count
+        FROM operation_logs
+        <include refid="OperationLogWhere"/>
+        GROUP BY action
+        ORDER BY count DESC, action ASC
+        LIMIT 20
+    </select>
+
+    <select id="countByResourceType" resultType="com.xcappstore.admin.operationlog.dto.StatItem">
+        SELECT resource_type AS name, COUNT(1) AS count
+        FROM operation_logs
+        <include refid="OperationLogWhere"/>
+        GROUP BY resource_type
+        ORDER BY count DESC, resource_type ASC
+        LIMIT 20
+    </select>
+
+    <select id="countByDate" resultType="com.xcappstore.admin.operationlog.dto.StatItem">
+        SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS name, COUNT(1) AS count
+        FROM operation_logs
+        <include refid="OperationLogWhere"/>
+        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+        ORDER BY name ASC
+    </select>
+</mapper>

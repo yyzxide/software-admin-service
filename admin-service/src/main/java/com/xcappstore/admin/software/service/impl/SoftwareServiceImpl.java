@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
+import com.xcappstore.admin.operationlog.service.OperationLogService;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
@@ -18,6 +19,11 @@ import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
 import com.xcappstore.admin.software.service.PackageFileStorageService;
+import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationRequest;
+import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationResult;
+import com.xcappstore.admin.software.service.PackageFileStorageService.VerifiedPackage;
+import com.xcappstore.admin.software.service.PackageSecurityPolicyService;
+import com.xcappstore.admin.software.service.PackageUploadSessionService;
 import com.xcappstore.admin.software.service.SoftwareCacheService;
 import com.xcappstore.admin.software.service.SoftwareService;
 import java.math.BigDecimal;
@@ -32,6 +38,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class SoftwareServiceImpl implements SoftwareService {
@@ -63,17 +70,26 @@ public class SoftwareServiceImpl implements SoftwareService {
     private final SoftwareMapper softwareMapper;
     private final SoftwareCacheService softwareCacheService;
     private final PackageFileStorageService packageFileStorageService;
+    private final PackageUploadSessionService packageUploadSessionService;
+    private final PackageSecurityPolicyService packageSecurityPolicyService;
+    private final OperationLogService operationLogService;
     private final ObjectMapper objectMapper;
 
     public SoftwareServiceImpl(
         SoftwareMapper softwareMapper,
         SoftwareCacheService softwareCacheService,
         PackageFileStorageService packageFileStorageService,
+        PackageUploadSessionService packageUploadSessionService,
+        PackageSecurityPolicyService packageSecurityPolicyService,
+        OperationLogService operationLogService,
         ObjectMapper objectMapper
     ) {
         this.softwareMapper = softwareMapper;
         this.softwareCacheService = softwareCacheService;
         this.packageFileStorageService = packageFileStorageService;
+        this.packageUploadSessionService = packageUploadSessionService;
+        this.packageSecurityPolicyService = packageSecurityPolicyService;
+        this.operationLogService = operationLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -95,7 +111,16 @@ public class SoftwareServiceImpl implements SoftwareService {
         List<Long> tagIds = parseTagIds(request.getTagIds());
         validateTags(tagIds);
 
-        PackageFileStorageService.StoredPackage storedPackage = packageFileStorageService.store(request.getPackageFile());
+        VerifiedPackage verifiedPackage = resolvePackage(
+            request.getPackageFile(),
+            request.getUploadSessionId(),
+            packageFormat,
+            request.getExpectedSha256(),
+            request.getSignatureAlgorithm(),
+            request.getSignatureValue(),
+            operatorId
+        );
+        PackageFileStorageService.StoredPackage storedPackage = verifiedPackage.storedPackage();
         LocalDateTime now = LocalDateTime.now();
         boolean publishNow = Boolean.TRUE.equals(request.getPublishNow());
 
@@ -151,6 +176,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         packageInfo.setFileSize(storedPackage.fileSize());
         packageInfo.setStoragePath(storedPackage.storagePath());
         packageInfo.setSha256(storedPackage.sha256());
+        applyPackageVerification(packageInfo, verifiedPackage.verificationResult());
         packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
         packageInfo.setDownloadCount(0L);
         packageInfo.setScanStatus(0);
@@ -160,12 +186,18 @@ public class SoftwareServiceImpl implements SoftwareService {
         packageInfo.setUpdatedBy(operatorId);
         softwareMapper.insertPackage(packageInfo);
 
+        if (publishNow) {
+            packageSecurityPolicyService.assertAppPackagesPublishable(app.getId());
+        }
+
         for (Long tagId : tagIds) {
             softwareMapper.insertAppTag(app.getId(), tagId);
         }
 
         softwareCacheService.invalidateDetail(app.getId());
-        return detail(app.getId());
+        SoftwareResponse response = detail(app.getId());
+        operationLogService.record(operatorId, "software_upload", "software", app.getId(), app.getName(), "上传软件: " + app.getName());
+        return response;
     }
 
     @Override
@@ -228,7 +260,9 @@ public class SoftwareServiceImpl implements SoftwareService {
         }
 
         softwareCacheService.invalidateDetail(id);
-        return detail(id);
+        SoftwareResponse response = detail(id);
+        operationLogService.record(operatorId, "software_update", "software", id, response.getName(), "编辑软件资料: " + response.getName());
+        return response;
     }
 
     @Override
@@ -239,11 +273,15 @@ public class SoftwareServiceImpl implements SoftwareService {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "当前状态不允许上架");
         }
 
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        packageSecurityPolicyService.assertAppPackagesPublishable(id);
         LocalDateTime now = LocalDateTime.now();
-        softwareMapper.updateStatus(id, STATUS_PUBLISHED, now, normalizeAdminUserId(adminUserId));
-        softwareMapper.approveDraftVersions(id, now, now, normalizeAdminUserId(adminUserId));
+        softwareMapper.updateStatus(id, STATUS_PUBLISHED, now, operatorId);
+        softwareMapper.approveDraftVersions(id, now, now, operatorId);
         softwareCacheService.invalidateDetail(id);
-        return detail(id);
+        SoftwareResponse response = detail(id);
+        operationLogService.record(operatorId, "software_publish", "software", id, response.getName(), "上架软件: " + response.getName());
+        return response;
     }
 
     @Override
@@ -254,9 +292,12 @@ public class SoftwareServiceImpl implements SoftwareService {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "当前状态不允许下架");
         }
 
-        softwareMapper.updateStatus(id, STATUS_UNPUBLISHED, app.getPublishedAt(), normalizeAdminUserId(adminUserId));
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        softwareMapper.updateStatus(id, STATUS_UNPUBLISHED, app.getPublishedAt(), operatorId);
         softwareCacheService.invalidateDetail(id);
-        return detail(id);
+        SoftwareResponse response = detail(id);
+        operationLogService.record(operatorId, "software_unpublish", "software", id, response.getName(), "下架软件: " + response.getName());
+        return response;
     }
 
     @Override
@@ -276,7 +317,16 @@ public class SoftwareServiceImpl implements SoftwareService {
         }
 
         boolean publishNow = Boolean.TRUE.equals(request.getPublishNow());
-        PackageFileStorageService.StoredPackage storedPackage = packageFileStorageService.store(request.getPackageFile());
+        VerifiedPackage verifiedPackage = resolvePackage(
+            request.getPackageFile(),
+            request.getUploadSessionId(),
+            packageFormat,
+            request.getExpectedSha256(),
+            request.getSignatureAlgorithm(),
+            request.getSignatureValue(),
+            operatorId
+        );
+        PackageFileStorageService.StoredPackage storedPackage = verifiedPackage.storedPackage();
         LocalDateTime now = LocalDateTime.now();
 
         if (publishNow) {
@@ -310,6 +360,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         packageInfo.setFileSize(storedPackage.fileSize());
         packageInfo.setStoragePath(storedPackage.storagePath());
         packageInfo.setSha256(storedPackage.sha256());
+        applyPackageVerification(packageInfo, verifiedPackage.verificationResult());
         packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
         packageInfo.setDownloadCount(0L);
         packageInfo.setScanStatus(0);
@@ -320,10 +371,12 @@ public class SoftwareServiceImpl implements SoftwareService {
         softwareMapper.insertPackage(packageInfo);
 
         if (publishNow) {
+            packageSecurityPolicyService.assertVersionPackagesPublishable(appId, version.getId());
             softwareMapper.updateStatus(app.getId(), STATUS_PUBLISHED, now, operatorId);
         }
 
         softwareCacheService.invalidateDetail(appId);
+        operationLogService.record(operatorId, "software_version_create", "software_version", version.getId(), app.getName() + " " + version.getVersionName(), "新增软件版本: " + app.getName() + " " + version.getVersionName());
         AppVersionResponse response = toVersionResponse(version);
         response.setPackages(List.of(toPackageResponse(packageInfo)));
         return response;
@@ -342,7 +395,16 @@ public class SoftwareServiceImpl implements SoftwareService {
             throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该版本已存在相同系统和架构的安装包");
         }
 
-        PackageFileStorageService.StoredPackage storedPackage = packageFileStorageService.store(request.getPackageFile());
+        VerifiedPackage verifiedPackage = resolvePackage(
+            request.getPackageFile(),
+            request.getUploadSessionId(),
+            packageFormat,
+            request.getExpectedSha256(),
+            request.getSignatureAlgorithm(),
+            request.getSignatureValue(),
+            operatorId
+        );
+        PackageFileStorageService.StoredPackage storedPackage = verifiedPackage.storedPackage();
         LocalDateTime now = LocalDateTime.now();
         AppPackageEntity packageInfo = new AppPackageEntity();
         packageInfo.setAppId(appId);
@@ -354,6 +416,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         packageInfo.setFileSize(storedPackage.fileSize());
         packageInfo.setStoragePath(storedPackage.storagePath());
         packageInfo.setSha256(storedPackage.sha256());
+        applyPackageVerification(packageInfo, verifiedPackage.verificationResult());
         packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
         packageInfo.setDownloadCount(0L);
         packageInfo.setScanStatus(0);
@@ -364,6 +427,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         softwareMapper.insertPackage(packageInfo);
 
         softwareCacheService.invalidateDetail(appId);
+        operationLogService.record(operatorId, "software_package_create", "software_package", packageInfo.getId(), packageInfo.getFileName(), "新增安装包: " + packageInfo.getFileName());
         return toPackageResponse(packageInfo);
     }
 
@@ -519,6 +583,40 @@ public class SoftwareServiceImpl implements SoftwareService {
         }
     }
 
+    private VerifiedPackage resolvePackage(
+        MultipartFile packageFile,
+        String uploadSessionId,
+        String packageFormat,
+        String expectedSha256,
+        String signatureAlgorithm,
+        String signatureValue,
+        Long operatorId
+    ) {
+        boolean hasUploadSession = StringUtils.hasText(uploadSessionId);
+        boolean hasDirectFile = packageFile != null && !packageFile.isEmpty();
+        if (hasUploadSession && hasDirectFile) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "安装包文件和上传会话不能同时提交");
+        }
+        if (hasUploadSession) {
+            return packageUploadSessionService.consumeCompletedSession(uploadSessionId, packageFormat, operatorId);
+        }
+        return packageFileStorageService.storeAndVerify(
+            packageFile,
+            packageFormat,
+            new PackageVerificationRequest(expectedSha256, signatureAlgorithm, signatureValue)
+        );
+    }
+
+    private void applyPackageVerification(AppPackageEntity packageInfo, PackageVerificationResult verificationResult) {
+        PackageVerificationResult result = verificationResult == null
+            ? PackageVerificationResult.notVerified()
+            : verificationResult;
+        packageInfo.setSignatureAlgorithm(result.signatureAlgorithm());
+        packageInfo.setSignatureValue(result.signatureValue());
+        packageInfo.setSignatureStatus(result.signatureStatus());
+        packageInfo.setSignatureVerifiedAt(result.signatureVerifiedAt());
+    }
+
     private SoftwareResponse toResponse(SoftwareEntity entity) {
         SoftwareResponse response = new SoftwareResponse();
         response.setId(entity.getId());
@@ -584,6 +682,10 @@ public class SoftwareServiceImpl implements SoftwareService {
         response.setStoragePath(entity.getStoragePath());
         response.setCdnUrl(entity.getCdnUrl());
         response.setSha256(entity.getSha256());
+        response.setSignatureAlgorithm(entity.getSignatureAlgorithm());
+        response.setSignatureStatus(entity.getSignatureStatus());
+        response.setSignatureStatusText(signatureStatusText(entity.getSignatureStatus()));
+        response.setSignatureVerifiedAt(entity.getSignatureVerifiedAt());
         response.setStatus(entity.getStatus());
         response.setStatusText(packageStatusText(entity.getStatus()));
         response.setDownloadCount(entity.getDownloadCount());
@@ -664,6 +766,15 @@ public class SoftwareServiceImpl implements SoftwareService {
             case 0 -> "未扫描";
             case 1 -> "安全";
             case 2 -> "有风险";
+            default -> "未知";
+        };
+    }
+
+    private String signatureStatusText(Integer status) {
+        return switch (status == null ? 0 : status) {
+            case 0 -> "未校验";
+            case 1 -> "通过";
+            case 2 -> "失败";
             default -> "未知";
         };
     }

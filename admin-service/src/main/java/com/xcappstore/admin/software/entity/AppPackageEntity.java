@@ -14,6 +14,10 @@ public class AppPackageEntity {
     private String storagePath;
     private String cdnUrl;
     private String sha256;
+    private String signatureAlgorithm;
+    private String signatureValue;
+    private Integer signatureStatus;
+    private LocalDateTime signatureVerifiedAt;
     private Integer status;
     private Long downloadCount;
     private Integer scanStatus;
@@ -109,6 +113,38 @@ public class AppPackageEntity {
 
     public void setSha256(String sha256) {
         this.sha256 = sha256;
+    }
+
+    public String getSignatureAlgorithm() {
+        return signatureAlgorithm;
+    }
+
+    public void setSignatureAlgorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public String getSignatureValue() {
+        return signatureValue;
+    }
+
+    public void setSignatureValue(String signatureValue) {
+        this.signatureValue = signatureValue;
+    }
+
+    public Integer getSignatureStatus() {
+        return signatureStatus;
+    }
+
+    public void setSignatureStatus(Integer signatureStatus) {
+        this.signatureStatus = signatureStatus;
+    }
+
+    public LocalDateTime getSignatureVerifiedAt() {
+        return signatureVerifiedAt;
+    }
+
+    public void setSignatureVerifiedAt(LocalDateTime signatureVerifiedAt) {
+        this.signatureVerifiedAt = signatureVerifiedAt;
     }
 
     public Integer getStatus() {

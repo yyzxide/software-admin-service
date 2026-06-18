@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.software.mapper.PackageUploadSessionMapper">
+    <resultMap id="PackageUploadSessionResultMap" type="com.xcappstore.admin.software.entity.PackageUploadSessionEntity">
+        <id column="upload_id" property="uploadId"/>
+        <result column="file_name" property="fileName"/>
+        <result column="package_format" property="packageFormat"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="chunk_size" property="chunkSize"/>
+        <result column="total_chunks" property="totalChunks"/>
+        <result column="uploaded_chunk_count" property="uploadedChunkCount"/>
+        <result column="uploaded_chunks" property="uploadedChunks"/>
+        <result column="expected_sha256" property="expectedSha256"/>
+        <result column="actual_sha256" property="actualSha256"/>
+        <result column="storage_path" property="storagePath"/>
+        <result column="signature_algorithm" property="signatureAlgorithm"/>
+        <result column="signature_value" property="signatureValue"/>
+        <result column="signature_status" property="signatureStatus"/>
+        <result column="signature_verified_at" property="signatureVerifiedAt"/>
+        <result column="status" property="status"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="created_by" property="createdBy"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="completed_at" property="completedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.xcappstore.admin.software.entity.PackageUploadSessionEntity">
+        INSERT INTO package_upload_sessions
+        (upload_id, file_name, package_format, file_size, chunk_size, total_chunks,
+         uploaded_chunk_count, uploaded_chunks, expected_sha256, actual_sha256, storage_path,
+         signature_algorithm, signature_value, signature_status, signature_verified_at,
+         status, error_message, created_by, created_at, updated_at, completed_at)
+        VALUES
+        (#{uploadId}, #{fileName}, #{packageFormat}, #{fileSize}, #{chunkSize}, #{totalChunks},
+         #{uploadedChunkCount}, CAST(#{uploadedChunks} AS JSON), #{expectedSha256}, #{actualSha256}, #{storagePath},
+         #{signatureAlgorithm}, #{signatureValue}, #{signatureStatus}, #{signatureVerifiedAt},
+         #{status}, #{errorMessage}, #{createdBy}, #{createdAt}, #{updatedAt}, #{completedAt})
+    </insert>
+
+    <select id="selectByUploadId" resultMap="PackageUploadSessionResultMap">
+        SELECT upload_id, file_name, package_format, file_size, chunk_size, total_chunks,
+               uploaded_chunk_count, uploaded_chunks, expected_sha256, actual_sha256,
+               storage_path, signature_algorithm, signature_value, signature_status,
+               signature_verified_at, status, error_message, created_by, created_at,
+               updated_at, completed_at
+        FROM package_upload_sessions
+        WHERE upload_id = #{uploadId}
+        LIMIT 1
+    </select>
+
+    <select id="selectExpiredUploading" resultMap="PackageUploadSessionResultMap">
+        SELECT upload_id, file_name, package_format, file_size, chunk_size, total_chunks,
+               uploaded_chunk_count, uploaded_chunks, expected_sha256, actual_sha256,
+               storage_path, signature_algorithm, signature_value, signature_status,
+               signature_verified_at, status, error_message, created_by, created_at,
+               updated_at, completed_at
+        FROM package_upload_sessions
+        WHERE status = 0
+          AND updated_at &lt; #{cutoff}
+        ORDER BY updated_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateProgress">
+        UPDATE package_upload_sessions
+        SET uploaded_chunks = CAST(#{uploadedChunks} AS JSON),
+            uploaded_chunk_count = #{uploadedChunkCount},
+            updated_at = NOW(3)
+        WHERE upload_id = #{uploadId}
+          AND status = 0
+    </update>
+
+    <update id="complete">
+        UPDATE package_upload_sessions
+        SET actual_sha256 = #{actualSha256},
+            storage_path = #{storagePath},
+            signature_algorithm = #{signatureAlgorithm},
+            signature_value = #{signatureValue},
+            signature_status = #{signatureStatus},
+            signature_verified_at = #{signatureVerifiedAt},
+            status = 1,
+            error_message = NULL,
+            completed_at = #{completedAt},
+            updated_at = #{completedAt}
+        WHERE upload_id = #{uploadId}
+          AND status = 0
+    </update>
+
+    <update id="markConsumed">
+        UPDATE package_upload_sessions
+        SET status = 2,
+            updated_at = NOW(3)
+        WHERE upload_id = #{uploadId}
+          AND status = 1
+    </update>
+
+    <update id="markFailed">
+        UPDATE package_upload_sessions
+        SET status = 3,
+            error_message = #{errorMessage},
+            updated_at = NOW(3)
+        WHERE upload_id = #{uploadId}
+          AND status = 0
+    </update>
+</mapper>

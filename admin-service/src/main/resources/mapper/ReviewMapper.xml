@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.review.mapper.ReviewMapper">
+    <resultMap id="ReviewTaskResultMap" type="com.xcappstore.admin.review.entity.ReviewTaskEntity">
+        <id column="id" property="id"/>
+        <result column="app_id" property="appId"/>
+        <result column="version_id" property="versionId"/>
+        <result column="target_type" property="targetType"/>
+        <result column="app_name" property="appName"/>
+        <result column="version_name" property="versionName"/>
+        <result column="title" property="title"/>
+        <result column="status" property="status"/>
+        <result column="priority" property="priority"/>
+        <result column="submit_reason" property="submitReason"/>
+        <result column="review_comment" property="reviewComment"/>
+        <result column="reviewer_id" property="reviewerId"/>
+        <result column="submitted_by" property="submittedBy"/>
+        <result column="submitted_at" property="submittedAt"/>
+        <result column="reviewed_at" property="reviewedAt"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <resultMap id="ReviewHistoryResultMap" type="com.xcappstore.admin.review.entity.ReviewHistoryEntity">
+        <id column="id" property="id"/>
+        <result column="task_id" property="taskId"/>
+        <result column="action" property="action"/>
+        <result column="from_status" property="fromStatus"/>
+        <result column="to_status" property="toStatus"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="comment" property="comment"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="TaskColumns">
+        rt.id, rt.app_id, rt.version_id, rt.target_type, rt.title, rt.status, rt.priority,
+        rt.submit_reason, rt.review_comment, rt.reviewer_id, rt.submitted_by, rt.submitted_at,
+        rt.reviewed_at, rt.created_at, rt.updated_at,
+        a.name AS app_name,
+        av.version_name AS version_name
+    </sql>
+
+    <sql id="TaskJoins">
+        LEFT JOIN apps a ON a.id = rt.app_id
+        LEFT JOIN app_versions av ON av.id = rt.version_id
+    </sql>
+
+    <sql id="TaskWhere">
+        <where>
+            <if test="query.status != null">
+                AND rt.status = #{query.status}
+            </if>
+            <if test="query.appId != null">
+                AND rt.app_id = #{query.appId}
+            </if>
+            <if test="query.reviewerId != null">
+                AND rt.reviewer_id = #{query.reviewerId}
+            </if>
+            <if test="query.keyword != null and query.keyword != ''">
+                AND (rt.title LIKE CONCAT('%', #{query.keyword}, '%') OR a.name LIKE CONCAT('%', #{query.keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <insert id="insertTask" parameterType="com.xcappstore.admin.review.entity.ReviewTaskEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO review_tasks
+        (app_id, version_id, target_type, title, status, priority, submit_reason,
+         review_comment, reviewer_id, submitted_by, submitted_at, reviewed_at, created_at, updated_at)
+        VALUES
+        (#{appId}, #{versionId}, #{targetType}, #{title}, #{status}, #{priority}, #{submitReason},
+         #{reviewComment}, #{reviewerId}, #{submittedBy}, #{submittedAt}, #{reviewedAt}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <insert id="insertHistory" parameterType="com.xcappstore.admin.review.entity.ReviewHistoryEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO review_histories
+        (task_id, action, from_status, to_status, operator_id, comment, created_at)
+        VALUES
+        (#{taskId}, #{action}, #{fromStatus}, #{toStatus}, #{operatorId}, #{comment}, #{createdAt})
+    </insert>
+
+    <select id="countActiveTask" resultType="long">
+        SELECT COUNT(1)
+        FROM review_tasks
+        WHERE app_id = #{appId}
+          AND status IN (0, 1)
+        <choose>
+            <when test="versionId != null">
+                AND version_id = #{versionId}
+            </when>
+            <otherwise>
+                AND version_id IS NULL
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(1)
+        FROM review_tasks rt
+        <include refid="TaskJoins"/>
+        <include refid="TaskWhere"/>
+    </select>
+
+    <select id="selectPage" resultMap="ReviewTaskResultMap">
+        SELECT <include refid="TaskColumns"/>
+        FROM review_tasks rt
+        <include refid="TaskJoins"/>
+        <include refid="TaskWhere"/>
+        ORDER BY rt.priority DESC, rt.created_at DESC, rt.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultMap="ReviewTaskResultMap">
+        SELECT <include refid="TaskColumns"/>
+        FROM review_tasks rt
+        <include refid="TaskJoins"/>
+        WHERE rt.id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectHistories" resultMap="ReviewHistoryResultMap">
+        SELECT id, task_id, action, from_status, to_status, operator_id, comment, created_at
+        FROM review_histories
+        WHERE task_id = #{taskId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <update id="assign">
+        UPDATE review_tasks
+        SET reviewer_id = #{reviewerId},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="finish">
+        UPDATE review_tasks
+        SET status = #{status},
+            review_comment = #{reviewComment},
+            reviewer_id = #{reviewerId},
+            reviewed_at = #{reviewedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+</mapper>

@@ -1,5 +1,6 @@
 package com.xcappstore.admin.category.controller;
 
+import com.xcappstore.admin.auth.rbac.RequirePermission;
 import com.xcappstore.admin.category.dto.CategoryCreateRequest;
 import com.xcappstore.admin.category.dto.CategoryQueryRequest;
 import com.xcappstore.admin.category.dto.CategoryResponse;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/admin/categories")
+@RequirePermission("category:view")
 public class CategoryController {
     private final CategoryService categoryService;
 
@@ -50,23 +52,27 @@ public class CategoryController {
     }
 
     @PostMapping
+    @RequirePermission("category:manage")
     public ApiResponse<Map<String, Long>> create(@Valid @RequestBody CategoryCreateRequest request) {
         Long categoryId = categoryService.create(request);
         return ApiResponse.success(Map.of("category_id", categoryId));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("category:manage")
     public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody CategoryUpdateRequest request) {
         categoryService.update(id, request);
         return ApiResponse.success(null);
     }
 
     @PostMapping("/{id}/toggle-status")
+    @RequirePermission("category:manage")
     public ApiResponse<CategoryResponse> toggleStatus(@PathVariable Long id) {
         return ApiResponse.success(categoryService.toggleStatus(id));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission("category:manage")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         categoryService.delete(id);
         return ApiResponse.success(null);

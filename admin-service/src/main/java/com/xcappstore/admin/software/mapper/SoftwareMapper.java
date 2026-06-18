@@ -68,4 +68,35 @@ public interface SoftwareMapper {
         @Param("publishedAt") LocalDateTime publishedAt,
         @Param("updatedBy") Long updatedBy
     );
+
+    int updateAppReviewing(@Param("id") Long id, @Param("updatedBy") Long updatedBy);
+
+    int updateVersionReviewing(@Param("versionId") Long versionId, @Param("updatedBy") Long updatedBy);
+
+    int updateDraftVersionsReviewing(@Param("appId") Long appId, @Param("updatedBy") Long updatedBy);
+
+    int approveVersion(
+        @Param("versionId") Long versionId,
+        @Param("reviewedAt") LocalDateTime reviewedAt,
+        @Param("publishedAt") LocalDateTime publishedAt,
+        @Param("updatedBy") Long updatedBy
+    );
+
+    int rejectAppReview(
+        @Param("id") Long id,
+        @Param("rejectedAt") LocalDateTime rejectedAt,
+        @Param("updatedBy") Long updatedBy
+    );
+
+    int rejectVersion(
+        @Param("versionId") Long versionId,
+        @Param("reviewedAt") LocalDateTime reviewedAt,
+        @Param("updatedBy") Long updatedBy
+    );
+
+    int rejectDraftVersions(
+        @Param("appId") Long appId,
+        @Param("reviewedAt") LocalDateTime reviewedAt,
+        @Param("updatedBy") Long updatedBy
+    );
 }

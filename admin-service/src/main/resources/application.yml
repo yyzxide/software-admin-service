@@ -1,13 +1,13 @@
 server:
   address: 0.0.0.0
-  port: 8090
+  port: ${ADMIN_SERVER_PORT:8090}
 
 spring:
   application:
     name: java-software-admin-service
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${ADMIN_DB_URL:jdbc:mysql://localhost:3306/db_java_software_admin?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    url: ${ADMIN_DB_URL:jdbc:mysql://${ADMIN_DB_HOST:127.0.0.1}:${ADMIN_DB_PORT:3308}/${ADMIN_DB_NAME:db_java_software_admin}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${ADMIN_DB_USERNAME:root}
     password: ${ADMIN_DB_PASSWORD:root123456}
     hikari:
@@ -17,8 +17,8 @@ spring:
       initialization-fail-timeout: -1
   data:
     redis:
-      host: ${ADMIN_REDIS_HOST:localhost}
-      port: ${ADMIN_REDIS_PORT:6379}
+      host: ${ADMIN_REDIS_HOST:127.0.0.1}
+      port: ${ADMIN_REDIS_PORT:6381}
       password: ${ADMIN_REDIS_PASSWORD:}
       database: ${ADMIN_REDIS_DATABASE:0}
       timeout: 5000ms
@@ -26,24 +26,45 @@ spring:
     property-naming-strategy: SNAKE_CASE
   servlet:
     multipart:
-      max-file-size: ${ADMIN_UPLOAD_MAX_FILE_SIZE:1024MB}
-      max-request-size: ${ADMIN_UPLOAD_MAX_REQUEST_SIZE:1024MB}
+      max-file-size: ${ADMIN_UPLOAD_MAX_FILE_SIZE:500MB}
+      max-request-size: ${ADMIN_UPLOAD_MAX_REQUEST_SIZE:600MB}
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   configuration:
     map-underscore-to-camel-case: true
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+  packages-to-scan: com.xcappstore.admin
+  paths-to-match: /api/v1/admin/**
+
 logging:
   level:
     com.xcappstore.admin: INFO
 
 admin:
+  openapi:
+    server-url: ${ADMIN_OPENAPI_SERVER_URL:http://127.0.0.1:${server.port}}
   security:
     user-id: ${ADMIN_SECURITY_USER_ID:1}
     username: ${ADMIN_SECURITY_USERNAME:admin}
     password: ${ADMIN_SECURITY_PASSWORD:admin123456}
-    token-secret: ${ADMIN_SECURITY_TOKEN_SECRET:xcappstore-admin-local-secret}
+    password-sha256: ${ADMIN_SECURITY_PASSWORD_SHA256:}
+    token-secret: ${ADMIN_SECURITY_TOKEN_SECRET:change-me-local-development-secret}
     ttl-seconds: ${ADMIN_SECURITY_TTL_SECONDS:7200}
   upload:
     package-dir: ${ADMIN_UPLOAD_PACKAGE_DIR:${user.dir}/storage/packages}
+    max-package-size: ${ADMIN_UPLOAD_MAX_PACKAGE_SIZE:500MB}
+    signature-public-key-pem: ${ADMIN_UPLOAD_SIGNATURE_PUBLIC_KEY_PEM:}
+    cleanup:
+      enabled: ${ADMIN_UPLOAD_CLEANUP_ENABLED:true}
+      expire-hours: ${ADMIN_UPLOAD_CLEANUP_EXPIRE_HOURS:24}
+      batch-size: ${ADMIN_UPLOAD_CLEANUP_BATCH_SIZE:100}
+      fixed-delay-ms: ${ADMIN_UPLOAD_CLEANUP_FIXED_DELAY_MS:3600000}

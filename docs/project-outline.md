@@ -1,144 +1,182 @@
-# Project Outline
+# 项目设计总览
 
-## Project Name
+## 项目名称
 
-Java Software Admin Service
+信创软件商店后台管理系统
 
-## Project Positioning
+## 项目定位
 
-This project is a standalone Java implementation of a software store admin backend for an internal testing stage.
+这是一个 Java / Spring Boot 后台管理系统，服务于企业内测阶段的软件分发业务。项目聚焦后台运营侧能力：软件包上传、元数据管理、版本管理、审核流、上下架和操作审计。
 
-It is not a direct fork of an existing service. The old software store project is only used as a business reference: package distribution, software metadata, categories, tags, versions, package files, and publish/unpublish operations.
+系统采用模块化单体设计，而不是一开始拆成多个微服务。原因是当前阶段更重视业务闭环、快速联调和测试覆盖。模块边界在代码包和数据库表层面保持清晰，后续如果业务量上升，可以把存储、审核、通知等模块拆出去。
 
-The goal is to build a complete Java backend story with real admin-side workflows:
+## 目标用户
 
-- Software package upload.
-- Software metadata management.
-- Category and tag management.
-- Version and package metadata persistence.
-- Publish and unpublish state transitions.
-- Admin login and request authorization.
-- MySQL transactions, MyBatis dynamic SQL, Redis cache, and local frontend verification.
+- 后台运营人员：维护软件、分类、标签、上下架。
+- 审核人员：处理软件和版本审核任务。
+- 测试人员：验证软件分发链路和接口状态。
+- 后端研发：维护状态机、事务、缓存和审计逻辑。
 
-## Target Users
-
-- Internal operation/admin users.
-- Test-stage product or QA users.
-- Backend developers verifying software store workflows.
-
-## Architecture
+## 架构
 
 ```text
 admin-ui
   |
-  | HTTP + Bearer token
+  | HTTP + Bearer Token
   v
 admin-service
-  |-- Spring MVC controllers
-  |-- Service layer with validation and transactions
-  |-- MyBatis mappers and XML SQL
-  |-- Redis cache for category/tag/software detail
-  |-- Local package storage with SHA256 calculation
+  |-- auth          管理员登录、Token 鉴权
+  |-- auth.rbac     角色、权限点和接口权限拦截
+  |-- category      分类管理
+  |-- tag           标签管理
+  |-- software      软件、版本、安装包
+  |-- review        审核任务和审核历史
+  |-- operationlog  操作审计查询和写入
+  |-- common        统一响应、错误码、分页
+  |-- exception     全局异常处理
+  |-- config        Web、OpenAPI 和跨域配置
+  |
+  |-- MyBatis Mapper + XML SQL
+  |-- Redis cache
   v
 MySQL db_java_software_admin
 ```
 
-## Main Modules
+## 核心业务流程
 
-### Auth
+### 软件上传
 
-- Local admin login for testing.
-- HMAC token generation and verification.
-- `Authorization: Bearer` request authorization.
-- Gateway-style headers can still be supported later.
+1. 管理员上传安装包和软件元数据。
+2. 后端校验分类、标签、系统类型、CPU 架构、包格式。
+3. 小文件可以直接 multipart 上传；大文件可以先走分片上传会话。
+4. 上传链路校验单文件大小、总请求大小、安装包后缀和声明格式一致性。
+5. 本地保存安装包并计算 SHA256；分片上传会在合并后做大小和 SHA256 校验。
+6. 如果配置签名参数，执行 `sha256` 或 `sha256-rsa` 校验。
+7. 一个事务写入 `apps`、`app_versions`、`app_packages`、`app_tags`。
+8. 失效软件详情缓存。
+9. 写入 `operation_logs`。
 
-### Category
+### 审核流程
 
-- Category create/update/delete.
-- Tree query.
-- Status toggle.
-- Unique-name validation.
-- Delete checks for child categories and related software.
-- Redis cache invalidation.
+1. 管理员提交软件或版本审核任务。
+2. 系统写入 `review_tasks` 和 `review_histories`。
+3. 软件状态进入审核中。
+4. 审核人可以分配、通过或驳回任务。
+5. 通过后软件上架，版本状态变为已通过。
+6. 驳回后软件状态变为审核驳回，版本状态变为驳回。
+7. 每个动作写入操作日志。
 
-### Tag
+### 操作审计
 
-- Tag create/update/delete.
-- Hot tag query and hot toggle.
-- Unique-name validation.
-- Delete checks for related software.
-- Redis cache invalidation.
+审计日志内置在 `admin-service` 中。写入内容包括：
 
-### Software
+- 操作人 ID、用户名、用户类型。
+- 操作类型。
+- 资源类型、资源 ID、资源名称。
+- JSON 格式操作详情。
+- IP、User-Agent、创建时间。
 
-- Admin software list with filters.
-- Software detail.
-- Multipart package upload.
-- SHA256 calculation.
-- App/version/package/tag metadata persistence.
-- Publish/unpublish state transitions.
-- Redis software detail cache.
+## 数据模型
 
-### Operation Log
+核心表：
 
-Current operation log service is kept as an optional reference module.
+- `categories`：分类表。
+- `tags`：标签表。
+- `admin_users`：管理员账号表，保存账号状态和演示环境密码哈希。
+- `admin_roles`：角色表。
+- `admin_permissions`：权限点表。
+- `admin_user_roles`：管理员角色关联表。
+- `admin_role_permissions`：角色权限关联表。
+- `apps`：软件主表。
+- `app_versions`：版本表。
+- `app_packages`：安装包表。
+- `package_upload_sessions`：分片上传会话表。
+- `app_tags`：软件标签关联表。
+- `review_tasks`：审核任务表。
+- `review_histories`：审核流转历史表。
+- `operation_logs`：操作审计表。
 
-The next better direction is to merge operation audit capability into `admin-service` instead of keeping it as the main story.
+## 状态设计
 
-## Data Model
+软件状态：
 
-The standalone database is `db_java_software_admin`.
+- `0` 草稿
+- `1` 审核中
+- `2` 已上架
+- `3` 已下架
+- `4` 审核驳回
 
-Main tables:
+版本状态：
 
-- `categories`
-- `tags`
-- `apps`
-- `app_versions`
-- `app_packages`
-- `app_tags`
+- `0` 草稿
+- `1` 审核中
+- `2` 已通过
+- `3` 审核驳回
+- `4` 已下架
 
-The schema is maintained by this project:
+审核任务状态：
 
-```text
-database/mysql/001_init_admin_schema.sql
-```
+- `0` 待审核
+- `1` 审核中
+- `2` 已通过
+- `3` 已驳回
+- `4` 已取消
 
-## Current Scope
+上传会话状态：
 
-Implemented:
+- `0` 上传中
+- `1` 已完成
+- `2` 已消费
+- `3` 失败
 
-- Admin login.
-- Category management.
-- Tag management.
-- Software upload.
-- Software list/detail query.
-- Software edit.
-- Version append with package upload.
-- Existing-version package variant append.
-- Version/package metadata query.
-- Publish/unpublish flow.
-- MySQL schema.
-- Redis integration points.
-- Static admin UI.
-- Unit and controller tests.
+安装包签名状态：
 
-Not implemented yet:
+- `0` 未校验
+- `1` 通过
+- `2` 失败
 
-- Real operation audit write.
-- Review workflow.
-- Chunk upload.
-- SDK download/client API.
-- Production-grade deployment and monitoring.
+## 设计取舍
 
-## Design Direction
+- 当前采用模块化单体，降低本地启动和联调成本。
+- MyBatis XML 保留复杂 SQL 的可读性，适合后台筛选和统计场景。
+- 操作日志内置到主服务，保证业务动作和审计写入处于同一事务边界。
+- Redis 缓存只用于读多写少的数据，写操作统一做缓存失效。
+- 文件存储先使用本地目录，后续可替换为对象存储。
+- 上传安全采用“Web 容器限制 + 业务层格式校验 + 本地路径约束 + SHA256/签名校验”的组合；大文件上传通过会话和分片进度与业务接口解耦。
+- RBAC 采用“用户 -> 角色 -> 权限点”的模型，Controller 通过注解声明权限，默认超级管理员拥有通配权限，并提供账号、角色、授权管理页面。
+- 上传临时分片采用定时清理，避免研发和测试环境长期堆积 `.chunks` 目录。
+- OpenAPI 文档使用 springdoc-openapi 自动生成，避免手写接口文档和代码脱节。
 
-This project should keep moving as an independent Java backend project.
+## 安全边界
 
-Reference the old internal software store only at the business level, not at the code or schema level. When implementation details conflict, prefer a clean Java backend design:
+当前已实现：
 
-- Clear Controller/Service/Mapper layering.
-- Independent schema.
-- Testable service logic.
-- Practical admin UI for verification.
-- Stable local and WSL setup.
+- 管理员 Token 鉴权。
+- Token HMAC 签名和过期时间。
+- SHA-256 密码哈希配置兼容。
+- RBAC 权限点校验。
+- 上传单文件大小和总请求大小限制。
+- 安装包格式和文件后缀一致性校验。
+- 文件名净化、路径 normalize、存储根目录限制。
+- 分片上传、断点续传、完成合并。
+- 过期上传会话和临时分片定时清理。
+- SHA256 完整性校验和可选 RSA 签名验签。
+- 审核通过和直接上架前拦截签名失败、扫描风险的安装包。
+- 软件、版本、安装包和审核动作审计。
+- Swagger UI 和 OpenAPI JSON 用于本地联调和接口展示。
+- `make smoke` 用于服务启动后的 HTTP 冒烟检查。
+
+当前边界：
+
+- 暂未做安装包魔数校验和病毒扫描执行器。
+- 生产级密码策略、登录失败限制和更细的菜单级权限仍可继续增强。
+- 暂未做正式包孤儿文件清理。
+
+## 后续演进
+
+- 增加安装包安全扫描状态回调。
+- 增加正式包孤儿文件清理。
+- 增加客户端 SDK 下载和软件详情开放接口。
+- 增强生产级密码策略、登录失败限制和菜单级权限控制。
+- 增强 Knife4j UI 或接口分组。
+- 增加生产部署、监控告警和发布流水线说明。

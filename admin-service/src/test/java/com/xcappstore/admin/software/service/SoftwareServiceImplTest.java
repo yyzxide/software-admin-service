@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
+import com.xcappstore.admin.operationlog.dto.OperationLogCreateCommand;
+import com.xcappstore.admin.operationlog.service.OperationLogService;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
@@ -19,6 +21,9 @@ import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
+import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationResult;
+import com.xcappstore.admin.software.service.PackageFileStorageService.StoredPackage;
+import com.xcappstore.admin.software.service.PackageFileStorageService.VerifiedPackage;
 import com.xcappstore.admin.software.service.impl.SoftwareServiceImpl;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -42,6 +47,9 @@ class SoftwareServiceImplTest {
             softwareMapper,
             softwareCacheService,
             new FakePackageFileStorageService(),
+            new FakePackageUploadSessionService(),
+            new PackageSecurityPolicyService(softwareMapper),
+            new FakeOperationLogService(),
             new ObjectMapper()
         );
     }
@@ -95,6 +103,23 @@ class SoftwareServiceImplTest {
     }
 
     @Test
+    void rejectsPublishWhenPackageScanIsRisky() {
+        softwareMapper.apps.put(1L, app(1L, "风险软件", 1));
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(10L);
+        packageInfo.setAppId(1L);
+        packageInfo.setVersionId(1L);
+        packageInfo.setFileName("risky.deb");
+        packageInfo.setScanStatus(2);
+        softwareMapper.packages.put(10L, packageInfo);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("安装包安全扫描有风险，不能上架: risky.deb", ex.getMessage());
+    }
+
+    @Test
     void uploadsSoftwareWithPackageMetadata() {
         softwareMapper.categoryCount = 1L;
         softwareMapper.tagCounts.put(2L, 1L);
@@ -122,6 +147,56 @@ class SoftwareServiceImplTest {
         assertEquals(1, softwareMapper.packages.size());
         assertEquals(1, softwareMapper.appTagCount);
         assertEquals("fake-sha256", softwareMapper.packages.values().iterator().next().getSha256());
+    }
+
+    @Test
+    void uploadsSoftwareFromCompletedUploadSession() {
+        softwareMapper.categoryCount = 1L;
+
+        SoftwareUploadRequest request = new SoftwareUploadRequest();
+        request.setAppKey("com.example.chunked");
+        request.setName("分片上传软件");
+        request.setCategoryId(1L);
+        request.setSummary("支持大文件续传");
+        request.setDescription("description");
+        request.setVersionName("1.0.0");
+        request.setVersionCode(100L);
+        request.setOsType("uos_v20");
+        request.setArch("x86_64");
+        request.setPackageFormat("deb");
+        request.setUploadSessionId("upload-session-1");
+
+        softwareService.upload(request, 99L);
+
+        AppPackageEntity packageInfo = softwareMapper.packages.values().iterator().next();
+        assertEquals("chunked-editor.deb", packageInfo.getFileName());
+        assertEquals("chunked-sha256", packageInfo.getSha256());
+        assertEquals(1, packageInfo.getSignatureStatus());
+        assertEquals("sha256", packageInfo.getSignatureAlgorithm());
+    }
+
+    @Test
+    void rejectsPackageFileAndUploadSessionTogether() {
+        softwareMapper.categoryCount = 1L;
+
+        SoftwareUploadRequest request = new SoftwareUploadRequest();
+        request.setAppKey("com.example.conflict");
+        request.setName("冲突软件");
+        request.setCategoryId(1L);
+        request.setSummary("summary");
+        request.setDescription("description");
+        request.setVersionName("1.0.0");
+        request.setVersionCode(100L);
+        request.setOsType("uos_v20");
+        request.setArch("x86_64");
+        request.setPackageFormat("deb");
+        request.setUploadSessionId("upload-session-1");
+        request.setPackageFile(new MockMultipartFile("package_file", "editor.deb", "application/octet-stream", "deb".getBytes()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.upload(request, 99L));
+
+        assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
+        assertEquals("安装包文件和上传会话不能同时提交", ex.getMessage());
     }
 
     @Test
@@ -387,16 +462,124 @@ class SoftwareServiceImplTest {
             approvedVersionCount++;
             return 1;
         }
+
+        @Override
+        public int updateAppReviewing(Long id, Long updatedBy) {
+            SoftwareEntity app = apps.get(id);
+            app.setStatus(1);
+            app.setUpdatedBy(updatedBy);
+            return 1;
+        }
+
+        @Override
+        public int updateVersionReviewing(Long versionId, Long updatedBy) {
+            AppVersionEntity version = versions.get(versionId);
+            version.setStatus(1);
+            version.setUpdatedBy(updatedBy);
+            return 1;
+        }
+
+        @Override
+        public int updateDraftVersionsReviewing(Long appId, Long updatedBy) {
+            versions.values().stream()
+                .filter(version -> appId.equals(version.getAppId()))
+                .forEach(version -> {
+                    version.setStatus(1);
+                    version.setUpdatedBy(updatedBy);
+                });
+            return 1;
+        }
+
+        @Override
+        public int approveVersion(Long versionId, LocalDateTime reviewedAt, LocalDateTime publishedAt, Long updatedBy) {
+            AppVersionEntity version = versions.get(versionId);
+            version.setStatus(2);
+            version.setIsLatest(1);
+            version.setReviewedAt(reviewedAt);
+            version.setPublishedAt(publishedAt);
+            version.setUpdatedBy(updatedBy);
+            return 1;
+        }
+
+        @Override
+        public int rejectAppReview(Long id, LocalDateTime rejectedAt, Long updatedBy) {
+            SoftwareEntity app = apps.get(id);
+            app.setStatus(4);
+            app.setRejectedAt(rejectedAt);
+            app.setUpdatedBy(updatedBy);
+            return 1;
+        }
+
+        @Override
+        public int rejectVersion(Long versionId, LocalDateTime reviewedAt, Long updatedBy) {
+            AppVersionEntity version = versions.get(versionId);
+            version.setStatus(3);
+            version.setReviewedAt(reviewedAt);
+            version.setUpdatedBy(updatedBy);
+            return 1;
+        }
+
+        @Override
+        public int rejectDraftVersions(Long appId, LocalDateTime reviewedAt, Long updatedBy) {
+            versions.values().stream()
+                .filter(version -> appId.equals(version.getAppId()))
+                .forEach(version -> {
+                    version.setStatus(3);
+                    version.setReviewedAt(reviewedAt);
+                    version.setUpdatedBy(updatedBy);
+                });
+            return 1;
+        }
+    }
+
+    private static final class FakeOperationLogService implements OperationLogService {
+        @Override
+        public com.xcappstore.admin.common.PageResponse<com.xcappstore.admin.operationlog.dto.OperationLogResponse> list(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) {
+            return new com.xcappstore.admin.common.PageResponse<>(0, 1, 20, List.of());
+        }
+
+        @Override
+        public com.xcappstore.admin.operationlog.dto.OperationLogResponse detail(Long id) {
+            return null;
+        }
+
+        @Override
+        public com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse options() {
+            return new com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse(List.of(), List.of());
+        }
+
+        @Override
+        public com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse stats(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) {
+            return new com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse(List.of(), List.of(), List.of());
+        }
+
+        @Override
+        public void record(OperationLogCreateCommand command) {
+        }
     }
 
     private static final class FakePackageFileStorageService extends PackageFileStorageService {
         private FakePackageFileStorageService() {
-            super("/tmp/xcappstore-admin-test-packages");
+            super("/tmp/xcappstore-admin-test-packages", "500MB");
         }
 
         @Override
-        public StoredPackage store(org.springframework.web.multipart.MultipartFile file) {
+        public StoredPackage store(org.springframework.web.multipart.MultipartFile file, String packageFormat) {
             return new StoredPackage(file.getOriginalFilename(), file.getSize(), "fake/editor.deb", "fake-sha256");
+        }
+    }
+
+    private static final class FakePackageUploadSessionService extends PackageUploadSessionService {
+        private FakePackageUploadSessionService() {
+            super(null, null, null);
+        }
+
+        @Override
+        public VerifiedPackage consumeCompletedSession(String uploadId, String packageFormat, Long adminUserId) {
+            return new VerifiedPackage(
+                new StoredPackage("chunked-editor.deb", 12L, "fake/chunked-editor.deb", "chunked-sha256"),
+                PackageVerificationResult.verified("sha256", "chunked-sha256")
+            );
         }
     }
 

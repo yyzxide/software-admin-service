@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.xcappstore.admin.auth.AdminAuthInterceptor;
+import com.xcappstore.admin.auth.AdminPrincipal;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
@@ -41,7 +43,7 @@ class SoftwareControllerTest {
 
         mockMvc.perform(multipart("/api/v1/admin/software/apps")
                 .file(packageFile)
-                .header("X-User-ID", "99")
+                .requestAttr(AdminAuthInterceptor.ADMIN_PRINCIPAL_ATTR, new AdminPrincipal(99L, "tester", "admin", 0L))
                 .param("appKey", "com.example.editor")
                 .param("name", "文本编辑器")
                 .param("categoryId", "1")

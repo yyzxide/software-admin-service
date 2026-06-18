@@ -46,8 +46,11 @@ public class SoftwareUploadRequest {
     private String screenshots;
     private String tagIds;
     private Boolean publishNow;
+    private String uploadSessionId;
+    private String expectedSha256;
+    private String signatureAlgorithm;
+    private String signatureValue;
 
-    @NotNull(message = "安装包文件不能为空")
     private MultipartFile packageFile;
 
     public String getAppKey() {
@@ -220,6 +223,54 @@ public class SoftwareUploadRequest {
 
     public void setPublish_now(Boolean publishNow) {
         this.publishNow = publishNow;
+    }
+
+    public String getUploadSessionId() {
+        return uploadSessionId;
+    }
+
+    public void setUploadSessionId(String uploadSessionId) {
+        this.uploadSessionId = uploadSessionId;
+    }
+
+    public void setUpload_session_id(String uploadSessionId) {
+        this.uploadSessionId = uploadSessionId;
+    }
+
+    public String getExpectedSha256() {
+        return expectedSha256;
+    }
+
+    public void setExpectedSha256(String expectedSha256) {
+        this.expectedSha256 = expectedSha256;
+    }
+
+    public void setExpected_sha256(String expectedSha256) {
+        this.expectedSha256 = expectedSha256;
+    }
+
+    public String getSignatureAlgorithm() {
+        return signatureAlgorithm;
+    }
+
+    public void setSignatureAlgorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public void setSignature_algorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public String getSignatureValue() {
+        return signatureValue;
+    }
+
+    public void setSignatureValue(String signatureValue) {
+        this.signatureValue = signatureValue;
+    }
+
+    public void setSignature_value(String signatureValue) {
+        this.signatureValue = signatureValue;
     }
 
     public MultipartFile getPackageFile() {

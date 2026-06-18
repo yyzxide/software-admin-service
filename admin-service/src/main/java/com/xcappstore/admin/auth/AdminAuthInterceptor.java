@@ -1,28 +1,35 @@
 package com.xcappstore.admin.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xcappstore.admin.auth.rbac.AdminPermissionService;
+import com.xcappstore.admin.auth.rbac.RequirePermission;
 import com.xcappstore.admin.common.ApiResponse;
 import com.xcappstore.admin.common.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class AdminAuthInterceptor implements HandlerInterceptor {
     public static final String ADMIN_PRINCIPAL_ATTR = "adminPrincipal";
-    private static final String USER_TYPE_ADMIN = "admin";
 
     private final ObjectMapper objectMapper;
     private final AdminTokenService adminTokenService;
+    private final AdminPermissionService adminPermissionService;
 
-    public AdminAuthInterceptor(ObjectMapper objectMapper, AdminTokenService adminTokenService) {
+    public AdminAuthInterceptor(
+        ObjectMapper objectMapper,
+        AdminTokenService adminTokenService,
+        AdminPermissionService adminPermissionService
+    ) {
         this.objectMapper = objectMapper;
         this.adminTokenService = adminTokenService;
+        this.adminPermissionService = adminPermissionService;
     }
 
     @Override
@@ -34,24 +41,32 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         AdminPrincipal tokenPrincipal = resolveBearerPrincipal(request);
         if (tokenPrincipal != null) {
             request.setAttribute(ADMIN_PRINCIPAL_ATTR, tokenPrincipal);
+            return checkPermission(request, response, handler, tokenPrincipal);
+        }
+
+        writeError(response, ErrorCode.UNAUTHORIZED, "未登录");
+        return false;
+    }
+
+    private boolean checkPermission(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        Object handler,
+        AdminPrincipal principal
+    ) throws IOException {
+        if (!(handler instanceof HandlerMethod handlerMethod)) {
+            return true;
+        }
+        RequirePermission permission = handlerMethod.getMethodAnnotation(RequirePermission.class);
+        if (permission == null) {
+            permission = handlerMethod.getBeanType().getAnnotation(RequirePermission.class);
+        }
+        if (permission == null || adminPermissionService.hasPermission(principal, permission.value())) {
             return true;
         }
 
-        String userId = request.getHeader("X-User-ID");
-        String userType = request.getHeader("X-User-Type");
-
-        if (isBlank(userId) || isBlank(userType)) {
-            writeError(response, ErrorCode.UNAUTHORIZED, "未登录");
-            return false;
-        }
-
-        if (!USER_TYPE_ADMIN.equals(userType.toLowerCase(Locale.ROOT))) {
-            writeError(response, ErrorCode.PERMISSION_DENIED, "权限不足");
-            return false;
-        }
-
-        request.setAttribute(ADMIN_PRINCIPAL_ATTR, new AdminPrincipal(parseUserId(userId), "gateway-admin", USER_TYPE_ADMIN, 0L));
-        return true;
+        writeError(response, ErrorCode.PERMISSION_DENIED, "权限不足，缺少权限: " + permission.value());
+        return false;
     }
 
     private AdminPrincipal resolveBearerPrincipal(HttpServletRequest request) throws IOException {
@@ -64,14 +79,6 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return adminTokenService.verify(token);
         } catch (Exception ex) {
             return null;
-        }
-    }
-
-    private Long parseUserId(String userId) {
-        try {
-            return Long.parseLong(userId);
-        } catch (Exception ex) {
-            return 0L;
         }
     }
 

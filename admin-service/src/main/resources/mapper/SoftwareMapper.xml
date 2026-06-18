@@ -65,6 +65,10 @@
         <result column="storage_path" property="storagePath"/>
         <result column="cdn_url" property="cdnUrl"/>
         <result column="sha256" property="sha256"/>
+        <result column="signature_algorithm" property="signatureAlgorithm"/>
+        <result column="signature_value" property="signatureValue"/>
+        <result column="signature_status" property="signatureStatus"/>
+        <result column="signature_verified_at" property="signatureVerifiedAt"/>
         <result column="status" property="status"/>
         <result column="download_count" property="downloadCount"/>
         <result column="scan_status" property="scanStatus"/>
@@ -188,11 +192,13 @@
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO app_packages
         (app_id, version_id, os_type, arch, package_format, file_name, file_size,
-         storage_path, cdn_url, sha256, status, download_count, scan_status,
+         storage_path, cdn_url, sha256, signature_algorithm, signature_value,
+         signature_status, signature_verified_at, status, download_count, scan_status,
          scan_report, created_at, updated_at, created_by, updated_by)
         VALUES
         (#{appId}, #{versionId}, #{osType}, #{arch}, #{packageFormat}, #{fileName}, #{fileSize},
-         #{storagePath}, #{cdnUrl}, #{sha256}, #{status}, #{downloadCount}, #{scanStatus},
+         #{storagePath}, #{cdnUrl}, #{sha256}, #{signatureAlgorithm}, #{signatureValue},
+         #{signatureStatus}, #{signatureVerifiedAt}, #{status}, #{downloadCount}, #{scanStatus},
          #{scanReport}, #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy})
     </insert>
 
@@ -300,8 +306,10 @@
 
     <select id="selectPackagesByAppId" resultMap="AppPackageResultMap">
         SELECT id, app_id, version_id, os_type, arch, package_format, file_name,
-               file_size, storage_path, cdn_url, sha256, status, download_count,
-               scan_status, scan_report, created_at, updated_at, created_by, updated_by
+               file_size, storage_path, cdn_url, sha256, signature_algorithm,
+               signature_value, signature_status, signature_verified_at, status,
+               download_count, scan_status, scan_report, created_at, updated_at,
+               created_by, updated_by
         FROM app_packages
         WHERE app_id = #{appId}
           AND deleted_at IS NULL
@@ -323,6 +331,81 @@
         SET status = 2,
             reviewed_at = #{reviewedAt},
             published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+          AND status IN (0, 1)
+    </update>
+
+    <update id="updateAppReviewing">
+        UPDATE apps
+        SET status = 1,
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+          AND status IN (0, 3, 4)
+    </update>
+
+    <update id="updateVersionReviewing">
+        UPDATE app_versions
+        SET status = 1,
+            submitted_at = COALESCE(submitted_at, NOW(3)),
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{versionId}
+          AND deleted_at IS NULL
+          AND status IN (0, 3, 4)
+    </update>
+
+    <update id="updateDraftVersionsReviewing">
+        UPDATE app_versions
+        SET status = 1,
+            submitted_at = COALESCE(submitted_at, NOW(3)),
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE app_id = #{appId}
+          AND deleted_at IS NULL
+          AND status IN (0, 3, 4)
+    </update>
+
+    <update id="approveVersion">
+        UPDATE app_versions
+        SET status = 2,
+            is_latest = 1,
+            reviewed_at = #{reviewedAt},
+            published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{versionId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="rejectAppReview">
+        UPDATE apps
+        SET status = 4,
+            rejected_at = #{rejectedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="rejectVersion">
+        UPDATE app_versions
+        SET status = 3,
+            reviewed_at = #{reviewedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{versionId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="rejectDraftVersions">
+        UPDATE app_versions
+        SET status = 3,
+            reviewed_at = #{reviewedAt},
             updated_by = #{updatedBy},
             updated_at = NOW(3)
         WHERE app_id = #{appId}

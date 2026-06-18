@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.auth.rbac.AdminPermissionMapper">
+    <select id="selectPermissionCodesByUserId" resultType="string">
+        SELECT DISTINCT p.permission_code
+        FROM admin_user_roles ur
+        INNER JOIN admin_roles r ON r.id = ur.role_id AND r.status = 1
+        INNER JOIN admin_role_permissions rp ON rp.role_id = r.id
+        INNER JOIN admin_permissions p ON p.id = rp.permission_id AND p.status = 1
+        INNER JOIN admin_users u ON u.id = ur.user_id AND u.status = 1
+        WHERE ur.user_id = #{userId}
+    </select>
+</mapper>

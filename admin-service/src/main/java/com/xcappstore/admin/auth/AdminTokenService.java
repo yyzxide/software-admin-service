@@ -3,13 +3,19 @@ package com.xcappstore.admin.auth;
 import com.xcappstore.admin.auth.dto.AdminUserResponse;
 import com.xcappstore.admin.auth.dto.LoginRequest;
 import com.xcappstore.admin.auth.dto.LoginResponse;
+import com.xcappstore.admin.auth.rbac.AdminRbacMapper;
+import com.xcappstore.admin.auth.rbac.AdminUserEntity;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.exception.BusinessException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Locale;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -22,25 +28,50 @@ public class AdminTokenService {
     private final Long adminUserId;
     private final String adminUsername;
     private final String adminPassword;
+    private final String adminPasswordSha256;
     private final String tokenSecret;
     private final long ttlSeconds;
+    private final AdminRbacMapper rbacMapper;
 
+    @Autowired
     public AdminTokenService(
+        AdminRbacMapper rbacMapper,
         @Value("${admin.security.user-id:1}") Long adminUserId,
         @Value("${admin.security.username:admin}") String adminUsername,
         @Value("${admin.security.password:admin123456}") String adminPassword,
-        @Value("${admin.security.token-secret:xcappstore-admin-local-secret}") String tokenSecret,
+        @Value("${admin.security.password-sha256:}") String adminPasswordSha256,
+        @Value("${admin.security.token-secret:change-me-local-development-secret}") String tokenSecret,
         @Value("${admin.security.ttl-seconds:7200}") long ttlSeconds
     ) {
+        this.rbacMapper = rbacMapper;
         this.adminUserId = adminUserId;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
+        this.adminPasswordSha256 = adminPasswordSha256;
         this.tokenSecret = tokenSecret;
         this.ttlSeconds = ttlSeconds;
     }
 
+    public AdminTokenService(
+        Long adminUserId,
+        String adminUsername,
+        String adminPassword,
+        String adminPasswordSha256,
+        String tokenSecret,
+        long ttlSeconds
+    ) {
+        this(null, adminUserId, adminUsername, adminPassword, adminPasswordSha256, tokenSecret, ttlSeconds);
+    }
+
     public LoginResponse login(LoginRequest request) {
-        if (!adminUsername.equals(request.getUsername()) || !adminPassword.equals(request.getPassword())) {
+        String username = request.getUsername();
+        if (rbacMapper != null) {
+            AdminUserEntity user = rbacMapper.selectUserByUsername(username);
+            if (user != null) {
+                return loginDbUser(user, request.getPassword());
+            }
+        }
+        if (!adminUsername.equals(username) || !passwordMatches(request.getPassword())) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
         }
 
@@ -50,6 +81,21 @@ public class AdminTokenService {
         return new LoginResponse(accessToken, "Bearer", ttlSeconds, expiresAt, toUser(new AdminPrincipal(
             adminUserId,
             adminUsername,
+            USER_TYPE_ADMIN,
+            expiresAt
+        )));
+    }
+
+    private LoginResponse loginDbUser(AdminUserEntity user, String rawPassword) {
+        if (!Integer.valueOf(1).equals(user.getStatus()) || !passwordHashMatches(rawPassword, user.getPasswordSha256())) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
+        }
+        long expiresAt = Instant.now().getEpochSecond() + ttlSeconds;
+        String payload = String.join("|", user.getId().toString(), user.getUsername(), USER_TYPE_ADMIN, Long.toString(expiresAt));
+        String accessToken = encode(payload) + "." + sign(payload);
+        return new LoginResponse(accessToken, "Bearer", ttlSeconds, expiresAt, toUser(new AdminPrincipal(
+            user.getId(),
+            user.getUsername(),
             USER_TYPE_ADMIN,
             expiresAt
         )));
@@ -85,6 +131,32 @@ public class AdminTokenService {
 
     public AdminUserResponse toUser(AdminPrincipal principal) {
         return new AdminUserResponse(principal.getUserId(), principal.getUsername(), principal.getUserType(), principal.getExpiresAt());
+    }
+
+    private boolean passwordMatches(String rawPassword) {
+        String password = rawPassword == null ? "" : rawPassword;
+        if (StringUtils.hasText(adminPasswordSha256)) {
+            String expected = adminPasswordSha256.trim().toLowerCase(Locale.ROOT);
+            return MessageDigest.isEqual(sha256Hex(password).getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+        }
+        return adminPassword.equals(password);
+    }
+
+    private boolean passwordHashMatches(String rawPassword, String expectedSha256) {
+        if (!StringUtils.hasText(expectedSha256)) {
+            return false;
+        }
+        String expected = expectedSha256.trim().toLowerCase(Locale.ROOT);
+        return MessageDigest.isEqual(sha256Hex(rawPassword == null ? "" : rawPassword).getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "密码校验失败");
+        }
     }
 
     private String encode(String value) {

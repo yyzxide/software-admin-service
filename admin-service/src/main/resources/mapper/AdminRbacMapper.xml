@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xcappstore.admin.auth.rbac.AdminRbacMapper">
+    <resultMap id="AdminUserResultMap" type="com.xcappstore.admin.auth.rbac.AdminUserEntity">
+        <id column="id" property="id"/>
+        <result column="username" property="username"/>
+        <result column="display_name" property="displayName"/>
+        <result column="password_sha256" property="passwordSha256"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <resultMap id="AdminRoleResultMap" type="com.xcappstore.admin.auth.rbac.AdminRoleEntity">
+        <id column="id" property="id"/>
+        <result column="role_code" property="roleCode"/>
+        <result column="role_name" property="roleName"/>
+        <result column="description" property="description"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <resultMap id="AdminPermissionResultMap" type="com.xcappstore.admin.auth.rbac.AdminPermissionEntity">
+        <id column="id" property="id"/>
+        <result column="permission_code" property="permissionCode"/>
+        <result column="permission_name" property="permissionName"/>
+        <result column="module" property="module"/>
+        <result column="description" property="description"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="AdminUserColumns">
+        id, username, display_name, password_sha256, status, created_at, updated_at
+    </sql>
+
+    <sql id="AdminRoleColumns">
+        id, role_code, role_name, description, status, created_at, updated_at
+    </sql>
+
+    <sql id="AdminPermissionColumns">
+        id, permission_code, permission_name, module, description, status, created_at
+    </sql>
+
+    <select id="selectUserById" resultMap="AdminUserResultMap">
+        SELECT <include refid="AdminUserColumns"/>
+        FROM admin_users
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectUserByUsername" resultMap="AdminUserResultMap">
+        SELECT <include refid="AdminUserColumns"/>
+        FROM admin_users
+        WHERE username = #{username}
+        LIMIT 1
+    </select>
+
+    <select id="selectUsers" resultMap="AdminUserResultMap">
+        SELECT <include refid="AdminUserColumns"/>
+        FROM admin_users
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+            AND (username LIKE CONCAT('%', #{keyword}, '%')
+                 OR display_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY id ASC
+    </select>
+
+    <select id="countUsersByUsername" resultType="long">
+        SELECT COUNT(1)
+        FROM admin_users
+        WHERE username = #{username}
+        <if test="excludeId != null">
+            AND id &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <insert id="insertUser" parameterType="com.xcappstore.admin.auth.rbac.AdminUserEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_users
+        (username, display_name, password_sha256, status, created_at, updated_at)
+        VALUES
+        (#{username}, #{displayName}, #{passwordSha256}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="updateUser" parameterType="com.xcappstore.admin.auth.rbac.AdminUserEntity">
+        UPDATE admin_users
+        SET display_name = #{displayName},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateUserStatus">
+        UPDATE admin_users
+        SET status = #{status},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateUserPassword">
+        UPDATE admin_users
+        SET password_sha256 = #{passwordSha256},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectRoles" resultMap="AdminRoleResultMap">
+        SELECT <include refid="AdminRoleColumns"/>
+        FROM admin_roles
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+            AND (role_code LIKE CONCAT('%', #{keyword}, '%')
+                 OR role_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectRoleById" resultMap="AdminRoleResultMap">
+        SELECT <include refid="AdminRoleColumns"/>
+        FROM admin_roles
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="countRolesByCode" resultType="long">
+        SELECT COUNT(1)
+        FROM admin_roles
+        WHERE role_code = #{roleCode}
+        <if test="excludeId != null">
+            AND id &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <select id="countRolesByIds" resultType="long">
+        SELECT COUNT(1)
+        FROM admin_roles
+        WHERE status = 1
+        <choose>
+            <when test="roleIds != null and roleIds.size() &gt; 0">
+                AND id IN
+                <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                    #{roleId}
+                </foreach>
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <insert id="insertRole" parameterType="com.xcappstore.admin.auth.rbac.AdminRoleEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_roles
+        (role_code, role_name, description, status, created_at, updated_at)
+        VALUES
+        (#{roleCode}, #{roleName}, #{description}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="updateRole" parameterType="com.xcappstore.admin.auth.rbac.AdminRoleEntity">
+        UPDATE admin_roles
+        SET role_name = #{roleName},
+            description = #{description},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectPermissions" resultMap="AdminPermissionResultMap">
+        SELECT <include refid="AdminPermissionColumns"/>
+        FROM admin_permissions
+        WHERE 1 = 1
+        <if test="module != null and module != ''">
+            AND module = #{module}
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY module ASC, id ASC
+    </select>
+
+    <select id="countPermissionsByIds" resultType="long">
+        SELECT COUNT(1)
+        FROM admin_permissions
+        WHERE status = 1
+        <choose>
+            <when test="permissionIds != null and permissionIds.size() &gt; 0">
+                AND id IN
+                <foreach collection="permissionIds" item="permissionId" open="(" separator="," close=")">
+                    #{permissionId}
+                </foreach>
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+    </select>
+
+    <select id="selectRolesByUserId" resultMap="AdminRoleResultMap">
+        SELECT r.id,
+               r.role_code,
+               r.role_name,
+               r.description,
+               r.status,
+               r.created_at,
+               r.updated_at
+        FROM admin_user_roles ur
+        INNER JOIN admin_roles r ON r.id = ur.role_id
+        WHERE ur.user_id = #{userId}
+        ORDER BY r.id ASC
+    </select>
+
+    <select id="selectPermissionsByRoleId" resultMap="AdminPermissionResultMap">
+        SELECT p.id,
+               p.permission_code,
+               p.permission_name,
+               p.module,
+               p.description,
+               p.status,
+               p.created_at
+        FROM admin_role_permissions rp
+        INNER JOIN admin_permissions p ON p.id = rp.permission_id
+        WHERE rp.role_id = #{roleId}
+        ORDER BY p.module ASC, p.id ASC
+    </select>
+
+    <delete id="deleteUserRoles">
+        DELETE FROM admin_user_roles
+        WHERE user_id = #{userId}
+    </delete>
+
+    <insert id="insertUserRole">
+        INSERT IGNORE INTO admin_user_roles (user_id, role_id)
+        VALUES (#{userId}, #{roleId})
+    </insert>
+
+    <delete id="deleteRolePermissions">
+        DELETE FROM admin_role_permissions
+        WHERE role_id = #{roleId}
+    </delete>
+
+    <insert id="insertRolePermission">
+        INSERT IGNORE INTO admin_role_permissions (role_id, permission_id)
+        VALUES (#{roleId}, #{permissionId})
+    </insert>
+</mapper>

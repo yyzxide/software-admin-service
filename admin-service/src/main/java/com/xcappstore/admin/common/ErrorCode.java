@@ -17,6 +17,9 @@ public final class ErrorCode {
     public static final int TAG_HAS_APPS = 2203;
     public static final int SOFTWARE_NOT_FOUND = 2301;
     public static final int SOFTWARE_INVALID_STATUS = 2302;
+    public static final int REVIEW_TASK_NOT_FOUND = 2401;
+    public static final int REVIEW_INVALID_STATUS = 2402;
+    public static final int OPERATION_LOG_NOT_FOUND = 8101;
     public static final int INTERNAL_ERROR = 9999;
 
     private ErrorCode() {

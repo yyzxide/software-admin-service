@@ -3,44 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>软件商店后台管理</title>
+  <title>信创软件商店后台</title>
   <link rel="stylesheet" href="./assets/app.css">
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
     <form id="loginForm" class="login-card">
-      <div class="brand login-brand">
+      <div class="login-head">
         <div class="brand-mark">XC</div>
         <div>
-          <h1>软件商店后台</h1>
-          <p>Java Admin Service</p>
+          <h1>信创软件商店后台</h1>
+          <p>Java Admin Console</p>
         </div>
       </div>
-      <p class="login-copy">内测版后台管理台，登录后可进行软件、分类、标签和上传管理。</p>
-      <div class="field">
-        <label for="loginUsername">用户名</label>
+      <div class="field-stack">
+        <label for="loginUsername">账号</label>
         <input id="loginUsername" name="username" type="text" autocomplete="username" required>
       </div>
-      <div class="field">
+      <div class="field-stack">
         <label for="loginPassword">密码</label>
         <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
       </div>
-      <button class="action-button login-button" type="submit">登录</button>
+      <button class="button primary full" type="submit">登录</button>
       <p id="loginMessage" class="login-message"></p>
     </form>
   </section>
 
   <div id="appShell" class="app-shell hidden">
     <aside class="sidebar">
-      <div class="brand">
+      <div class="brand-block">
         <div class="brand-mark">XC</div>
         <div>
           <h1>软件商店后台</h1>
-          <p>Java Admin Service</p>
+          <p>Admin Service</p>
         </div>
       </div>
       <nav class="nav">
         <button class="nav-item active" data-tab="software">软件管理</button>
+        <button class="nav-item" data-tab="reviews">审核中心</button>
+        <button class="nav-item" data-tab="logs">操作日志</button>
+        <button class="nav-item" data-tab="rbac">权限管理</button>
         <button class="nav-item" data-tab="categories">分类管理</button>
         <button class="nav-item" data-tab="tags">标签管理</button>
         <button class="nav-item" data-tab="diagnostics">联调检查</button>
@@ -49,164 +51,196 @@
 
     <main class="workspace">
       <header class="topbar">
-        <div class="topbar-copy">
-          <div class="service-indicator" id="serviceIndicator">软件商店后台管理</div>
-          <div class="topbar-subtitle">软件 / 分类 / 标签 / 上传</div>
+        <div>
+          <div class="page-kicker" id="serviceIndicator">信创软件商店后台</div>
+          <h2 id="pageTitle">软件管理</h2>
         </div>
         <div class="topbar-actions">
-          <div class="connection-pill warn" id="connectionStatus">待连接</div>
-          <div class="session-pill" id="sessionUser">未登录</div>
-          <button id="logoutButton" class="icon-button" title="退出登录">退出</button>
-          <button id="refreshCurrent" class="icon-button primary" title="刷新当前页">刷新</button>
+          <span class="connection-pill warn" id="connectionStatus">待连接</span>
+          <span class="session-pill" id="sessionUser">未登录</span>
+          <a id="apiDocLink" class="button ghost" href="/swagger-ui.html" target="_blank" rel="noreferrer">接口文档</a>
+          <button id="refreshCurrent" class="button ghost" type="button">刷新</button>
+          <button id="logoutButton" class="button ghost" type="button">退出</button>
         </div>
       </header>
 
       <section id="notice" class="notice hidden"></section>
 
       <section class="tab-panel active" data-panel="software">
-        <div class="section-head">
+        <div class="panel-head">
           <div>
-            <h2>软件管理</h2>
-            <p>列表、筛选、详情、上架和下架</p>
+            <h3>软件管理</h3>
+            <p>上传、查询、上架、下架和提交审核</p>
           </div>
           <div class="status-strip" id="softwareStats"></div>
         </div>
 
-        <details class="upload-panel">
+        <details class="form-panel">
           <summary>上传软件包</summary>
-          <form id="softwareUploadForm" class="upload-grid">
-            <input name="appKey" required maxlength="128" placeholder="App Key，例如 com.example.editor">
-            <input name="name" required maxlength="128" placeholder="软件名称">
-            <input name="categoryId" required type="number" min="1" placeholder="分类ID">
-            <input name="versionName" required maxlength="64" placeholder="版本号，例如 1.0.0">
-            <input name="versionCode" type="number" min="1" placeholder="版本数字">
-            <select name="osType" required>
-              <option value="uos_v20">UOS V20</option>
-              <option value="uos_v23">UOS V23</option>
-              <option value="kylin_v10">Kylin V10</option>
-              <option value="kylin_v11">Kylin V11</option>
-            </select>
-            <select name="arch" required>
-              <option value="x86_64">x86_64</option>
-              <option value="aarch64">aarch64</option>
-              <option value="loongarch64">loongarch64</option>
-            </select>
-            <select name="packageFormat" required>
-              <option value="deb">deb</option>
-              <option value="rpm">rpm</option>
-              <option value="appimage">appimage</option>
-            </select>
-            <input name="tagIds" placeholder="标签ID，逗号分隔">
-            <input name="iconUrl" maxlength="512" placeholder="图标URL，可选">
-            <input name="summary" required maxlength="512" placeholder="软件摘要">
-            <textarea name="description" required rows="3" placeholder="软件描述"></textarea>
-            <input name="packageFile" type="file" required>
-            <label class="check-field">
-              <input name="publishNow" type="checkbox">
-              上传后直接上架
-            </label>
-            <button class="action-button" type="submit">提交上传</button>
+          <form id="softwareUploadForm" class="form-grid upload-grid">
+            <label>App Key<input name="appKey" required maxlength="128" placeholder="com.example.editor"></label>
+            <label>软件名称<input name="name" required maxlength="128" placeholder="文本编辑器"></label>
+            <label>分类<select name="categoryId" id="uploadCategorySelect" required><option value="">请选择分类</option></select></label>
+            <label>版本名称<input name="versionName" required maxlength="64" placeholder="1.0.0"></label>
+            <label>版本数字<input name="versionCode" type="number" min="1" placeholder="100"></label>
+            <label>系统<select name="osType" required><option value="uos_v20">UOS V20</option><option value="uos_v23">UOS V23</option><option value="kylin_v10">Kylin V10</option><option value="kylin_v11">Kylin V11</option></select></label>
+            <label>架构<select name="arch" required><option value="x86_64">x86_64</option><option value="aarch64">aarch64</option><option value="loongarch64">loongarch64</option></select></label>
+            <label>包格式<select name="packageFormat" required><option value="deb">deb</option><option value="rpm">rpm</option><option value="appimage">appimage</option></select></label>
+            <label>标签<select name="tagIds" id="uploadTagSelect" multiple></select></label>
+            <label>图标URL<input name="iconUrl" maxlength="512" placeholder="可选"></label>
+            <label class="wide">摘要<input name="summary" required maxlength="512" placeholder="软件摘要"></label>
+            <label class="wide">描述<textarea name="description" required rows="3" placeholder="软件描述"></textarea></label>
+            <label class="wide">安装包<input name="packageFile" type="file" required></label>
+            <label class="check-line"><input name="publishNow" type="checkbox"> 上传后直接上架</label>
+            <button class="button primary" type="submit">提交上传</button>
           </form>
         </details>
 
-        <div class="filter-grid">
-          <div class="field">
-            <label for="softwareKeyword">关键词</label>
-            <input id="softwareKeyword" type="search" placeholder="软件名 / app_key / 摘要">
-          </div>
-          <div class="field">
-            <label for="softwareStatus">状态</label>
-            <select id="softwareStatus">
-              <option value="">全部</option>
-              <option value="0">草稿</option>
-              <option value="1">审核中</option>
-              <option value="2">已上架</option>
-              <option value="3">已下架</option>
-              <option value="4">审核驳回</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="softwareCategory">分类ID</label>
-            <input id="softwareCategory" type="number" min="1" placeholder="可选">
-          </div>
-          <button id="searchSoftware" class="action-button">查询</button>
+        <div class="filter-bar">
+          <label>关键词<input id="softwareKeyword" type="search" placeholder="软件名 / app_key / 摘要"></label>
+          <label>状态<select id="softwareStatus"><option value="">全部</option><option value="0">草稿</option><option value="1">审核中</option><option value="2">已上架</option><option value="3">已下架</option><option value="4">审核驳回</option></select></label>
+          <label>分类<select id="softwareCategory"><option value="">全部分类</option></select></label>
+          <button id="searchSoftware" class="button primary" type="button">查询</button>
         </div>
 
-        <div class="split-layout">
-          <div class="table-wrap">
+        <div class="content-split">
+          <div class="table-panel">
             <table>
-              <thead>
-                <tr>
-                  <th>软件</th>
-                  <th>分类</th>
-                  <th>状态</th>
-                  <th>版本</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
+              <thead><tr><th>软件</th><th>分类/标签</th><th>状态</th><th>版本</th><th>操作</th></tr></thead>
               <tbody id="softwareTable"></tbody>
             </table>
           </div>
-          <aside class="detail-panel" id="softwareDetail">
-            <div class="empty-state">选择一条软件记录查看详情</div>
+          <aside class="side-panel" id="softwareDetail"><div class="empty-state">选择一条软件记录</div></aside>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="reviews">
+        <div class="panel-head">
+          <div><h3>审核中心</h3><p>提交审核、分配、通过和驳回</p></div>
+          <button id="reloadReviews" class="button ghost" type="button">刷新审核</button>
+        </div>
+        <form id="reviewCreateForm" class="filter-bar">
+          <label>软件<select name="appId" id="reviewAppSelect" required><option value="">请选择软件</option></select></label>
+          <label>版本<select name="versionId" id="reviewVersionSelect"><option value="">软件级审核</option></select></label>
+          <label>优先级<select name="priority"><option value="1">普通</option><option value="2">高</option><option value="0">低</option></select></label>
+          <label>原因<input name="reason" maxlength="512" placeholder="准备上架"></label>
+          <button class="button primary" type="submit">提交审核</button>
+        </form>
+        <div class="filter-bar compact">
+          <label>状态<select id="reviewStatus"><option value="">全部</option><option value="0">待审核</option><option value="1">审核中</option><option value="2">已通过</option><option value="3">已驳回</option></select></label>
+          <label>关键词<input id="reviewKeyword" type="search" placeholder="标题 / 软件名"></label>
+          <button id="searchReviews" class="button primary" type="button">查询</button>
+        </div>
+        <div class="table-panel">
+          <table>
+            <thead><tr><th>任务</th><th>对象</th><th>状态</th><th>优先级</th><th>审核人</th><th>操作</th></tr></thead>
+            <tbody id="reviewTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="logs">
+        <div class="panel-head">
+          <div><h3>操作日志</h3><p>查询软件、审核和安装包操作痕迹</p></div>
+          <button id="reloadLogs" class="button ghost" type="button">刷新日志</button>
+        </div>
+        <div class="filter-bar">
+          <label>动作<input id="logAction" placeholder="software_upload"></label>
+          <label>对象类型<select id="logResourceType"><option value="">全部</option><option value="software">软件</option><option value="version">版本</option><option value="package">安装包</option><option value="review">审核任务</option><option value="category">分类</option><option value="tag">标签</option><option value="rbac">权限配置</option></select></label>
+          <label>对象编号（高级）<input id="logResourceId" type="number" min="1" placeholder="通常不用填"></label>
+          <label>关键词<input id="logKeyword" type="search" placeholder="详情关键字"></label>
+          <button id="searchLogs" class="button primary" type="button">查询</button>
+        </div>
+        <div class="table-panel">
+          <table>
+            <thead><tr><th>时间</th><th>用户</th><th>动作</th><th>资源</th><th>详情</th><th>IP</th></tr></thead>
+            <tbody id="logTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="rbac">
+        <div class="panel-head">
+          <div><h3>权限管理</h3><p>管理员账号、角色和权限点分配</p></div>
+          <button id="reloadRbac" class="button ghost" type="button">刷新权限</button>
+        </div>
+
+        <div class="content-split">
+          <div>
+            <details class="form-panel" open>
+              <summary>新增管理员</summary>
+              <form id="adminUserForm" class="filter-bar">
+                <label>账号<input name="username" required maxlength="64" placeholder="reviewer01"></label>
+                <label>显示名<input name="display_name" maxlength="128" placeholder="审核员A"></label>
+                <label>初始密码<input name="password" type="password" required minlength="6" placeholder="至少6位"></label>
+                <label>角色<select name="role_ids" id="adminUserRoleSelect" multiple></select></label>
+                <button class="button primary" type="submit">新增账号</button>
+              </form>
+            </details>
+            <div class="table-panel">
+              <table>
+                <thead><tr><th>账号</th><th>状态</th><th>角色</th><th>操作</th></tr></thead>
+                <tbody id="rbacUserTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside class="side-panel permission-dictionary">
+            <details>
+              <summary>权限字典 <span id="rbacPermissionCount" class="subtext"></span></summary>
+              <p class="subtext">用于查看系统能力编码和给角色授权，日常账号管理无需逐项浏览。</p>
+              <div id="rbacPermissionList" class="tile-grid compact"></div>
+            </details>
           </aside>
+        </div>
+
+        <details class="form-panel">
+          <summary>新增角色</summary>
+          <form id="adminRoleForm" class="filter-bar">
+            <label>角色编码<input name="role_code" required maxlength="64" placeholder="security_reviewer"></label>
+            <label>角色名称<input name="role_name" required maxlength="128" placeholder="安全审核员"></label>
+            <label>说明<input name="description" maxlength="255" placeholder="负责安装包安全审核"></label>
+            <label>权限<select name="permission_ids" id="adminRolePermissionSelect" multiple></select></label>
+            <button class="button primary" type="submit">新增角色</button>
+          </form>
+        </details>
+        <div class="table-panel">
+          <table>
+            <thead><tr><th>角色</th><th>状态</th><th>权限</th><th>操作</th></tr></thead>
+            <tbody id="rbacRoleTable"></tbody>
+          </table>
         </div>
       </section>
 
       <section class="tab-panel" data-panel="categories">
-        <div class="section-head">
-          <div>
-            <h2>分类管理</h2>
-            <p>分类新增、树形查询、启停和删除校验</p>
-          </div>
-          <button id="reloadCategories" class="action-button secondary">刷新分类</button>
-        </div>
-
-        <form id="categoryForm" class="form-row">
-          <input name="name" required maxlength="50" placeholder="分类名称">
-          <input name="parent_id" type="number" min="1" placeholder="父分类ID">
-          <input name="sort_order" type="number" placeholder="排序">
-          <button class="action-button" type="submit">新增分类</button>
+        <div class="panel-head"><div><h3>分类管理</h3><p>分类新增、启停和删除校验</p></div><button id="reloadCategories" class="button ghost" type="button">刷新分类</button></div>
+        <form id="categoryForm" class="filter-bar">
+          <label>分类名称<input name="name" required maxlength="50" placeholder="办公软件"></label>
+          <label>父分类<select name="parent_id" id="categoryParentSelect"><option value="">无父分类</option></select></label>
+          <label>排序<input name="sort_order" type="number" placeholder="0"></label>
+          <button class="button primary" type="submit">新增分类</button>
         </form>
-
         <div id="categoryList" class="tile-grid"></div>
       </section>
 
       <section class="tab-panel" data-panel="tags">
-        <div class="section-head">
-          <div>
-            <h2>标签管理</h2>
-            <p>标签新增、热门标记、删除前关联校验</p>
-          </div>
-          <button id="reloadTags" class="action-button secondary">刷新标签</button>
-        </div>
-
-        <form id="tagForm" class="form-row">
-          <input name="name" required maxlength="50" placeholder="标签名称">
-          <input name="description" maxlength="255" placeholder="描述">
-          <label class="check-field">
-            <input name="is_hot" type="checkbox">
-            热门
-          </label>
-          <button class="action-button" type="submit">新增标签</button>
+        <div class="panel-head"><div><h3>标签管理</h3><p>标签新增、热门标记和删除校验</p></div><button id="reloadTags" class="button ghost" type="button">刷新标签</button></div>
+        <form id="tagForm" class="filter-bar">
+          <label>标签名称<input name="name" required maxlength="50" placeholder="开源"></label>
+          <label>描述<input name="description" maxlength="255" placeholder="描述"></label>
+          <label class="check-line"><input name="is_hot" type="checkbox"> 热门</label>
+          <button class="button primary" type="submit">新增标签</button>
         </form>
-
         <div id="tagList" class="tile-grid"></div>
       </section>
 
       <section class="tab-panel" data-panel="diagnostics">
-        <div class="section-head">
-          <div>
-            <h2>联调检查</h2>
-            <p>健康检查、模块列表和请求头验证</p>
-          </div>
-          <button id="runDiagnostics" class="action-button">执行检查</button>
-        </div>
+        <div class="panel-head"><div><h3>联调检查</h3><p>后端健康、模块和核心接口检查</p></div><button id="runDiagnostics" class="button primary" type="button">执行检查</button></div>
         <pre id="diagnosticsOutput" class="log-output">等待执行检查</pre>
       </section>
     </main>
   </div>
 
-  <script src="./assets/app.js"></script>
+  <script src="./assets/app.js?v=20260618-id-selectors"></script>
 </body>
 </html>

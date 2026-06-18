@@ -1,94 +1,92 @@
-# Status And Next Steps
+# 当前进度和下一步
 
-## Current Structure
+## 当前结构
 
 ```text
 java-software-admin-service/
-  admin-service/          # Main Spring Boot backend
-  admin-ui/               # Static admin UI for local verification
-  database/mysql/         # Standalone MySQL schema
-  docs/                   # Project notes and roadmap
-  operation-log-service/  # Optional/reference log query service
-  docker-compose.yml      # MySQL + Redis for local/WSL
-  Makefile                # Local commands
+  admin-service/          # 主 Spring Boot 后台服务
+  admin-ui/               # 本地验证用静态页面
+  database/mysql/         # MySQL 初始化脚本
+  docs/                   # 项目和面试文档
+  docker-compose.yml      # MySQL + Redis + 可选后端服务
+  Makefile                # 本地命令
 ```
 
-## Current Progress
+## 已完成能力
 
-Backend:
+后端：
 
-- Spring Boot application skeleton is ready.
-- Unified response, error code, global exception handling are ready.
-- Admin login and token verification are ready.
-- Category module is implemented.
-- Tag module is implemented.
-- Software list/detail query is implemented.
-- Software upload writes app/version/package/tag metadata in one transaction.
-- Software edit updates app metadata, category, tags, display flags, and sort weight.
-- Version append writes new version/package metadata in one transaction.
-- Package append supports adding OS/CPU architecture variants to an existing version.
-- Version list and package list APIs are implemented.
-- Publish and unpublish state transitions are implemented.
-- MyBatis XML mappers are in place.
-- Redis cache integration exists for category/tag/software detail.
-- Standalone MySQL schema is available.
+- Spring Boot 应用骨架。
+- 统一响应、错误码和全局异常处理。
+- 管理员登录、Token 生成和鉴权拦截。
+- RBAC 权限模型：管理员、角色、权限点、用户角色、角色权限、接口注解拦截和权限管理页面。
+- 分类管理：新增、查询、树形、启停、删除校验。
+- 标签管理：新增、查询、热门标记、删除校验。
+- 软件管理：列表、详情、上传、编辑、上架、下架。
+- 版本管理：新增版本、版本列表、最新版本控制。
+- 安装包管理：新增 OS/CPU 架构变体。
+- 大文件上传：上传会话、分片上传、断点续传、完成合并和业务消费。
+- 上传治理：过期上传会话和临时分片定时清理。
+- 发布安全：审核通过和直接上架前拦截签名失败、扫描风险的安装包。
+- 审核流程：提交、分配、通过、驳回、历史记录。
+- 操作审计：业务动作写入日志，支持列表、详情、选项和统计查询。
+- 基础安全：Token 鉴权、上传大小限制、安装包格式校验、SHA-256 密码哈希配置兼容、安装包 SHA256 完整性校验、可选 RSA 签名验签。
+- OpenAPI / Swagger UI：自动生成接口文档，支持在线调试。
+- 本地冒烟脚本：覆盖登录、接口文档和核心查询接口。
+- MyBatis XML Mapper。
+- Redis 缓存：分类、标签、软件详情。
+- 独立 MySQL schema。
+- Docker 后端镜像和 Compose app profile，一条命令可启动 MySQL、Redis 和后端。
 
-Frontend:
+前端：
 
-- Login page is available.
-- Admin dashboard shell is available.
-- Software list/detail/upload actions are available.
-- Category and tag management actions are available.
-- The UI is usable for verification, but still needs polishing.
+- 登录页。
+- 管理后台布局。
+- 软件列表、详情、上传、上架、下架。
+- 审核中心：提交审核、分配审核人、通过和驳回。
+- 操作日志：按动作、对象类型、对象编号和关键词查询。
+- 权限管理：新增管理员、新增角色、分配角色和权限字典查看。
+- 分类和标签管理。
+- 联调检查。
+- 接口文档入口。
 
-Tests:
+测试：
 
-- Java unit/controller tests pass.
-- Current count: 23 admin-service tests.
+- 当前 `admin-service` 测试通过。
+- 当前数量：48 个测试用例。
 
-## Known Problems
+## 已知不足
 
-These are acceptable for the current cleanup stage:
+- 静态 UI 已覆盖软件、审核、操作日志、权限管理、分类、标签和联调检查，但仍是轻量管理台，不追求复杂前端工程化。
+- 上传支持普通 Multipart 和分片上传，本地存储，已经有基础大小、格式、SHA256、可选 RSA 验签和过期临时分片清理，但未实现病毒扫描执行器和对象存储。
+- 当前已具备管理员账号管理、角色管理和角色授权页面。
+- 没有接入对象存储。
+- Swagger UI 已可用，暂未额外接入 Knife4j 皮肤。
 
-- Upload flow may still need real environment verification with MySQL and Redis.
-- UI is still a lightweight verification page, not a polished production admin console.
-- Operation log is not merged into `admin-service` yet.
-- Docker Compose currently starts MySQL and Redis only; the backend is usually run locally with Maven.
-- Native Windows is possible, but WSL is the safer route.
+## 短期路线
 
-## Recommended Short-Term Roadmap
+1. 增强生产级密码策略、登录失败限制和菜单级权限控制。
+2. 增加批次总大小校验、正式包孤儿文件清理。
+3. 增加安装包安全扫描执行器。
+4. 增加生产部署说明、监控告警和发布流水线。
+5. 增加更完整的集成测试脚本，覆盖真实文件上传、提交审核、通过、查询日志。
+6. 继续打磨管理台的审核详情和日志统计展示。
 
-1. Stabilize local/WSL setup.
-2. Verify upload against `db_java_software_admin`.
-3. Add operation audit write.
-4. Improve admin UI density and workflow.
-5. Add API documentation and curl test scripts.
-6. Add Docker image/deployment notes.
+## 面试主线建议
 
-## GitHub Preparation
+讲项目时不要从技术名词开始，先讲业务闭环：
 
-Before pushing:
+> 这个项目是企业软件商店后台，核心要解决的是软件包从上传、审核到上架的管理链路。我的设计重点是把软件、版本、安装包、审核任务和操作审计串成一个事务清晰、状态可控、可测试的后台系统。
 
-```bash
-make test
-make build
-make clean
-```
+然后再讲技术点：
 
-Initialize local git repo:
-
-```bash
-git init
-git add .
-git commit -m "Initial Java software admin service"
-```
-
-Push after creating a GitHub repository:
-
-```bash
-git remote add origin git@github.com:<your-name>/<repo-name>.git
-git branch -M main
-git push -u origin main
-```
-
-If SSH is not configured on Windows, use the HTTPS remote shown by GitHub.
+- Spring Boot 分层设计。
+- MyBatis XML 处理复杂查询。
+- MySQL 事务保证多表一致性。
+- Redis 缓存和缓存失效。
+- 审核状态机。
+- 操作审计。
+- RBAC 权限模型。
+- 上传安全、分片续传、签名校验和临时文件清理。
+- Swagger 接口文档。
+- 单元测试覆盖业务规则。

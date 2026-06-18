@@ -1,7 +1,6 @@
 package com.xcappstore.admin.software.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import org.springframework.web.multipart.MultipartFile;
 
 public class PackageAppendRequest {
@@ -14,7 +13,11 @@ public class PackageAppendRequest {
     @NotBlank(message = "包格式不能为空")
     private String packageFormat;
 
-    @NotNull(message = "安装包文件不能为空")
+    private String uploadSessionId;
+    private String expectedSha256;
+    private String signatureAlgorithm;
+    private String signatureValue;
+
     private MultipartFile packageFile;
 
     public String getOsType() {
@@ -47,6 +50,54 @@ public class PackageAppendRequest {
 
     public void setPackage_format(String packageFormat) {
         this.packageFormat = packageFormat;
+    }
+
+    public String getUploadSessionId() {
+        return uploadSessionId;
+    }
+
+    public void setUploadSessionId(String uploadSessionId) {
+        this.uploadSessionId = uploadSessionId;
+    }
+
+    public void setUpload_session_id(String uploadSessionId) {
+        this.uploadSessionId = uploadSessionId;
+    }
+
+    public String getExpectedSha256() {
+        return expectedSha256;
+    }
+
+    public void setExpectedSha256(String expectedSha256) {
+        this.expectedSha256 = expectedSha256;
+    }
+
+    public void setExpected_sha256(String expectedSha256) {
+        this.expectedSha256 = expectedSha256;
+    }
+
+    public String getSignatureAlgorithm() {
+        return signatureAlgorithm;
+    }
+
+    public void setSignatureAlgorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public void setSignature_algorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public String getSignatureValue() {
+        return signatureValue;
+    }
+
+    public void setSignatureValue(String signatureValue) {
+        this.signatureValue = signatureValue;
+    }
+
+    public void setSignature_value(String signatureValue) {
+        this.signatureValue = signatureValue;
     }
 
     public MultipartFile getPackageFile() {

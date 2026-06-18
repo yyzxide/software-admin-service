@@ -1,50 +1,53 @@
-# Admin UI
+# 管理台页面说明
 
-Lightweight browser UI for verifying `admin-service` workflows.
+这是一个用于本地验证 `admin-service` 业务流程的轻量级浏览器页面。
 
-It has no npm dependency and no build step. The backend serves it from:
+它没有 npm 依赖，也不需要构建步骤。后端启动后会直接托管这个页面：
 
 ```text
 http://127.0.0.1:8090/admin/index.html
 ```
 
-## Features
+## 功能范围
 
-- Login.
-- Software list/detail.
-- Software package upload.
-- Publish/unpublish.
-- Category management.
-- Tag management.
-- Basic diagnostics.
+- 登录。
+- 软件列表和详情。
+- 软件包上传。
+- 上架和下架。
+- 审核任务管理。
+- 操作日志查询。
+- RBAC 账号、角色和权限分配。
+- 分类管理。
+- 标签管理。
+- 基础联调检查。
 
-## Run
+## 运行方式
 
-Recommended:
+推荐直接启动后端：
 
 ```bash
 make run
 ```
 
-Then open:
+然后打开：
 
 ```text
 http://127.0.0.1:8090/admin/index.html
 ```
 
-Standalone static mode is only for UI debugging:
+独立静态模式只用于调试页面，不会自动代理后端接口：
 
 ```bash
 make ui
 ```
 
-Then open:
+然后打开：
 
 ```text
 http://127.0.0.1:5178
 ```
 
-Default account:
+默认账号：
 
 ```text
 admin / admin123456

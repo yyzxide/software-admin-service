@@ -14,6 +14,10 @@ public class AppPackageResponse {
     private String storagePath;
     private String cdnUrl;
     private String sha256;
+    private String signatureAlgorithm;
+    private Integer signatureStatus;
+    private String signatureStatusText;
+    private LocalDateTime signatureVerifiedAt;
     private Integer status;
     private String statusText;
     private Long downloadCount;
@@ -109,6 +113,38 @@ public class AppPackageResponse {
 
     public void setSha256(String sha256) {
         this.sha256 = sha256;
+    }
+
+    public String getSignatureAlgorithm() {
+        return signatureAlgorithm;
+    }
+
+    public void setSignatureAlgorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
+
+    public Integer getSignatureStatus() {
+        return signatureStatus;
+    }
+
+    public void setSignatureStatus(Integer signatureStatus) {
+        this.signatureStatus = signatureStatus;
+    }
+
+    public String getSignatureStatusText() {
+        return signatureStatusText;
+    }
+
+    public void setSignatureStatusText(String signatureStatusText) {
+        this.signatureStatusText = signatureStatusText;
+    }
+
+    public LocalDateTime getSignatureVerifiedAt() {
+        return signatureVerifiedAt;
+    }
+
+    public void setSignatureVerifiedAt(LocalDateTime signatureVerifiedAt) {
+        this.signatureVerifiedAt = signatureVerifiedAt;
     }
 
     public Integer getStatus() {

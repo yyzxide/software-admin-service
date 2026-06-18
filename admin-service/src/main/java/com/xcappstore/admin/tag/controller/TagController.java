@@ -1,5 +1,6 @@
 package com.xcappstore.admin.tag.controller;
 
+import com.xcappstore.admin.auth.rbac.RequirePermission;
 import com.xcappstore.admin.common.ApiResponse;
 import com.xcappstore.admin.tag.dto.TagCreateRequest;
 import com.xcappstore.admin.tag.dto.TagQueryRequest;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/admin/tags")
+@RequirePermission("tag:view")
 public class TagController {
     private final TagService tagService;
 
@@ -47,23 +49,27 @@ public class TagController {
     }
 
     @PostMapping
+    @RequirePermission("tag:manage")
     public ApiResponse<Map<String, Long>> create(@Valid @RequestBody TagCreateRequest request) {
         Long tagId = tagService.create(request);
         return ApiResponse.success(Map.of("tag_id", tagId));
     }
 
     @PutMapping("/{id}")
+    @RequirePermission("tag:manage")
     public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody TagUpdateRequest request) {
         tagService.update(id, request);
         return ApiResponse.success(null);
     }
 
     @PostMapping("/{id}/toggle-hot")
+    @RequirePermission("tag:manage")
     public ApiResponse<TagResponse> toggleHot(@PathVariable Long id) {
         return ApiResponse.success(tagService.toggleHot(id));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePermission("tag:manage")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         tagService.delete(id);
         return ApiResponse.success(null);
