@@ -130,6 +130,58 @@ class AdminTokenServiceTest {
         assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
+    @Test
+    void rejectsMalformedBase64TokenAsUnauthorized() {
+        AdminTokenService service = new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.verify("@@@.signature"));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
+    }
+
+    @Test
+    void rejectsConfigAdminWhenLocalFallbackDisabled() {
+        AdminTokenService service = new AdminTokenService(
+            null,
+            new PasswordHashService(),
+            1L,
+            "admin",
+            "admin123456",
+            "",
+            "",
+            "test-secret",
+            7200L,
+            false,
+            ""
+        );
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("admin123456");
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.login(request));
+
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getCode());
+    }
+
+    @Test
+    void rejectsLocalAdminOutsideLocalProfile() {
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> new AdminTokenService(
+            null,
+            new PasswordHashService(),
+            1L,
+            "admin",
+            "admin123456",
+            "",
+            "",
+            "test-secret",
+            7200L,
+            true,
+            "prod"
+        ));
+
+        assertEquals("配置管理员入口只能在 local/dev 环境开启", ex.getMessage());
+    }
+
     private static final class FakeRbacMapper implements AdminRbacMapper {
         private AdminUserEntity user;
 

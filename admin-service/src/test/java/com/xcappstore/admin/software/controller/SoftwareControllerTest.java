@@ -3,12 +3,14 @@ package com.xcappstore.admin.software.controller;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xcappstore.admin.auth.AdminAuthInterceptor;
 import com.xcappstore.admin.auth.AdminPrincipal;
 import com.xcappstore.admin.common.PageResponse;
+import com.xcappstore.admin.exception.GlobalExceptionHandler;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
@@ -65,6 +67,23 @@ class SoftwareControllerTest {
         assertEquals(1L, softwareService.lastUpload.getCategoryId());
         assertEquals("editor.deb", softwareService.lastUpload.getPackageFile().getOriginalFilename());
         assertEquals(99L, softwareService.lastAdminUserId);
+    }
+
+    @Test
+    void rejectsBlankScanResult() throws Exception {
+        FakeSoftwareService softwareService = new FakeSoftwareService();
+        MockMvc mockMvc = MockMvcBuilders
+            .standaloneSetup(new SoftwareController(softwareService))
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .setValidator(validator())
+            .build();
+
+        mockMvc.perform(post("/api/v1/admin/software/apps/1/packages/10/scan")
+                .requestAttr(AdminAuthInterceptor.ADMIN_PRINCIPAL_ATTR, new AdminPrincipal(99L, "tester", "admin", 0L))
+                .contentType("application/json")
+                .content("{\"result\":\" \"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("扫描结果不能为空"));
     }
 
     private LocalValidatorFactoryBean validator() {

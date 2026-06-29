@@ -21,6 +21,7 @@ import com.xcappstore.admin.software.service.PackageSecurityPolicyService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -80,7 +81,11 @@ public class ReviewServiceImpl implements ReviewService {
         task.setSubmittedAt(now);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
-        reviewMapper.insertTask(task);
+        try {
+            reviewMapper.insertTask(task);
+        } catch (DuplicateKeyException ex) {
+            throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该软件存在待处理审核任务");
+        }
         insertHistory(task.getId(), "submit", null, TASK_PENDING, operatorId, request.getReason(), now);
 
         softwareMapper.updateAppReviewing(app.getId(), operatorId);

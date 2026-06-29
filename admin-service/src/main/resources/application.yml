@@ -60,6 +60,7 @@ admin:
     password-sha256: ${ADMIN_SECURITY_PASSWORD_SHA256:}
     token-secret: ${ADMIN_SECURITY_TOKEN_SECRET:change-me-local-development-secret}
     ttl-seconds: ${ADMIN_SECURITY_TTL_SECONDS:7200}
+    local-admin-enabled: ${ADMIN_SECURITY_LOCAL_ADMIN_ENABLED:false}
   upload:
     package-dir: ${ADMIN_UPLOAD_PACKAGE_DIR:${user.dir}/storage/packages}
     max-package-size: ${ADMIN_UPLOAD_MAX_PACKAGE_SIZE:500MB}

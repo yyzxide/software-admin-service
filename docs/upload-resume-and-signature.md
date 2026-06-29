@@ -225,7 +225,7 @@ uploadSessionId=<upload_id>
 推荐演进方案：
 
 1. 安装包合并并完成签名校验后，先写入 `scan_status=0`。
-2. 本地演示环境调用模拟扫描接口，更新 `scan_status` 和 `scan_report`。
+2. 本地演示环境调用模拟扫描接口，必须显式提交 `result=safe/risky/failed`，更新 `scan_status` 和 `scan_report`。
 3. 扫描通过后更新 `scan_status=1`。
 4. 命中风险后更新 `scan_status=2`，扫描失败后更新 `scan_status=3`。
 5. 上架或审核通过时检查 `signature_status` 和 `scan_status`。

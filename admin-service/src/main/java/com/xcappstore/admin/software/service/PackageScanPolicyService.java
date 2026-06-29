@@ -13,7 +13,7 @@ public class PackageScanPolicyService {
 
     public Integer parseScanResult(String result) {
         if (!StringUtils.hasText(result)) {
-            return SCAN_STATUS_SAFE;
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "扫描结果不能为空");
         }
         return switch (result.trim().toLowerCase()) {
             case "safe", "pass", "passed", "安全" -> SCAN_STATUS_SAFE;

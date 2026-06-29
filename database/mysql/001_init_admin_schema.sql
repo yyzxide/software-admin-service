@@ -228,6 +228,8 @@ CREATE TABLE IF NOT EXISTS review_tasks (
   reviewed_at      DATETIME(3) DEFAULT NULL,
   created_at       DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at       DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  active_review_key BIGINT UNSIGNED GENERATED ALWAYS AS (CASE WHEN status IN (0, 1) THEN COALESCE(version_id, 0) ELSE NULL END) STORED COMMENT '活动审核唯一键，0表示软件级审核',
+  UNIQUE KEY uk_review_active_target (app_id, active_review_key),
   KEY idx_app_status (app_id, status),
   KEY idx_version_status (version_id, status),
   KEY idx_reviewer_status (reviewer_id, status),

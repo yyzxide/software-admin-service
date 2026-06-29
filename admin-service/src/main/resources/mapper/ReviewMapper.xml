@@ -134,7 +134,8 @@
             status = #{status},
             updated_at = #{updatedAt}
         WHERE id = #{id}
-          AND status IN (0, 1)
+          AND status = 0
+          AND reviewer_id IS NULL
     </update>
 
     <update id="finish">

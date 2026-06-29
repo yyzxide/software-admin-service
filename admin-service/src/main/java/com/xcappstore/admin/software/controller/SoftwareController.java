@@ -116,7 +116,7 @@ public class SoftwareController {
     public ApiResponse<AppPackageResponse> scanPackage(
         @PathVariable Long id,
         @PathVariable Long packageId,
-        @Valid @RequestBody(required = false) PackageScanRequest request,
+        @Valid @RequestBody PackageScanRequest request,
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(softwareService.scanPackage(id, packageId, request, adminUserId(servletRequest)));

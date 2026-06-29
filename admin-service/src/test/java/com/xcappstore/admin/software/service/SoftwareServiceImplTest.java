@@ -367,6 +367,28 @@ class SoftwareServiceImplTest {
         assertEquals("已上架", publishResponse.getStatusText());
     }
 
+    @Test
+    void rejectsBlankPackageScanResult() {
+        softwareMapper.apps.put(1L, app(1L, "扫描软件", 3));
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(10L);
+        packageInfo.setAppId(1L);
+        packageInfo.setVersionId(1L);
+        packageInfo.setFileName("safe.deb");
+        packageInfo.setScanStatus(0);
+        softwareMapper.packages.put(10L, packageInfo);
+        PackageScanRequest scanRequest = new PackageScanRequest();
+        scanRequest.setResult(" ");
+
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> softwareService.scanPackage(1L, 10L, scanRequest, 99L)
+        );
+
+        assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
+        assertEquals("扫描结果不能为空", ex.getMessage());
+    }
+
     private SoftwareEntity app(Long id, String name, Integer status) {
         SoftwareEntity app = new SoftwareEntity();
         app.setId(id);

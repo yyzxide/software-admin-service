@@ -8,6 +8,7 @@ import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
 import com.xcappstore.admin.operationlog.dto.OperationLogCreateCommand;
 import com.xcappstore.admin.operationlog.service.OperationLogService;
+import com.xcappstore.admin.review.dto.ReviewAssignRequest;
 import com.xcappstore.admin.review.dto.ReviewDecisionRequest;
 import com.xcappstore.admin.review.dto.ReviewTaskCreateRequest;
 import com.xcappstore.admin.review.dto.ReviewTaskResponse;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DuplicateKeyException;
 
 class ReviewServiceImplTest {
     private FakeReviewMapper reviewMapper;
@@ -120,6 +122,36 @@ class ReviewServiceImplTest {
     }
 
     @Test
+    void rejectsReassigningAlreadyAssignedTask() {
+        ReviewTaskEntity task = task(1L, 1L, null, 1);
+        task.setReviewerId(77L);
+        reviewMapper.tasks.put(1L, task);
+        ReviewAssignRequest request = new ReviewAssignRequest();
+        request.setReviewerId(88L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> reviewService.assign(1L, request, 99L));
+
+        assertEquals(ErrorCode.REVIEW_INVALID_STATUS, ex.getCode());
+        assertEquals("审核任务已被其他人处理", ex.getMessage());
+        assertEquals(0, reviewMapper.histories.size());
+    }
+
+    @Test
+    void rejectsDuplicateActiveTaskWhenDatabaseUniqueKeyWinsRace() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 0));
+        reviewMapper.duplicateOnInsert = true;
+        ReviewTaskCreateRequest request = new ReviewTaskCreateRequest();
+        request.setAppId(1L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> reviewService.create(request, 99L));
+
+        assertEquals(ErrorCode.DUPLICATE_RESOURCE, ex.getCode());
+        assertEquals("该软件存在待处理审核任务", ex.getMessage());
+        assertEquals(0, reviewMapper.histories.size());
+        assertEquals(0, softwareMapper.apps.get(1L).getStatus());
+    }
+
+    @Test
     void rejectsApproveWhenPackageNotScanned() {
         softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
         AppPackageEntity packageInfo = new AppPackageEntity();
@@ -169,15 +201,16 @@ class ReviewServiceImplTest {
         private long nextTaskId = 1L;
         private long nextHistoryId = 1L;
         private int finishAffectedRows = 1;
+        private boolean duplicateOnInsert;
 
-        @Override public int insertTask(ReviewTaskEntity task) { task.setId(nextTaskId++); tasks.put(task.getId(), task); return 1; }
+        @Override public int insertTask(ReviewTaskEntity task) { if (duplicateOnInsert) { throw new DuplicateKeyException("duplicate active review task"); } task.setId(nextTaskId++); tasks.put(task.getId(), task); return 1; }
         @Override public int insertHistory(ReviewHistoryEntity history) { history.setId(nextHistoryId++); histories.add(history); return 1; }
         @Override public long countActiveTask(Long appId, Long versionId) { return 0; }
         @Override public long count(com.xcappstore.admin.review.dto.ReviewTaskQueryRequest query) { return tasks.size(); }
         @Override public List<ReviewTaskEntity> selectPage(com.xcappstore.admin.review.dto.ReviewTaskQueryRequest query, int offset, int limit) { return tasks.values().stream().toList(); }
         @Override public ReviewTaskEntity selectById(Long id) { return tasks.get(id); }
         @Override public List<ReviewHistoryEntity> selectHistories(Long taskId) { return histories.stream().filter(h -> taskId.equals(h.getTaskId())).toList(); }
-        @Override public int assign(Long id, Long reviewerId, Integer status, LocalDateTime updatedAt) { ReviewTaskEntity task = tasks.get(id); if (task.getStatus() != 0 && task.getStatus() != 1) { return 0; } task.setReviewerId(reviewerId); task.setStatus(status); task.setUpdatedAt(updatedAt); return 1; }
+        @Override public int assign(Long id, Long reviewerId, Integer status, LocalDateTime updatedAt) { ReviewTaskEntity task = tasks.get(id); if (task.getStatus() != 0 || task.getReviewerId() != null) { return 0; } task.setReviewerId(reviewerId); task.setStatus(status); task.setUpdatedAt(updatedAt); return 1; }
         @Override public int finish(Long id, Integer status, String reviewComment, Long reviewerId, LocalDateTime reviewedAt, LocalDateTime updatedAt) { if (finishAffectedRows == 0) { return 0; } ReviewTaskEntity task = tasks.get(id); if (task.getStatus() != 0 && task.getStatus() != 1) { return 0; } task.setStatus(status); task.setReviewComment(reviewComment); task.setReviewerId(reviewerId); task.setReviewedAt(reviewedAt); task.setUpdatedAt(updatedAt); return 1; }
     }
 

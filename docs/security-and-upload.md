@@ -20,7 +20,7 @@
 - `admin_users.password_hash` 是管理员登录的优先来源，新建和重置密码使用 BCrypt。
 - 历史 `password_sha256` 只作为兼容字段，旧账号登录成功后会自动升级为 BCrypt 哈希。
 - 权限管理页面支持新增管理员、重置密码、启停账号、分配角色、新增角色和分配权限点。
-- 如果数据库账号不存在，会回退到 `ADMIN_SECURITY_USERNAME`、`ADMIN_SECURITY_PASSWORD`、`ADMIN_SECURITY_PASSWORD_HASH` 或 `ADMIN_SECURITY_PASSWORD_SHA256`。
+- 配置文件账号只作为本地开发兜底，默认关闭；只有 `local` 或 `dev` Profile 且显式设置 `ADMIN_SECURITY_LOCAL_ADMIN_ENABLED=true` 时，才会在数据库账号不存在时回退到 `ADMIN_SECURITY_USERNAME`、`ADMIN_SECURITY_PASSWORD`、`ADMIN_SECURITY_PASSWORD_HASH` 或 `ADMIN_SECURITY_PASSWORD_SHA256`。
 
 示例：
 
@@ -29,7 +29,7 @@ ADMIN_SECURITY_TOKEN_SECRET=<long-random-secret> \
 make run
 ```
 
-如果需要给本地兜底账号配置哈希密码，优先使用 `ADMIN_SECURITY_PASSWORD_HASH`；旧的 `ADMIN_SECURITY_PASSWORD_SHA256` 只用于兼容演示环境。
+如果需要给本地兜底账号配置哈希密码，优先使用 `ADMIN_SECURITY_PASSWORD_HASH`；旧的 `ADMIN_SECURITY_PASSWORD_SHA256` 只用于兼容演示环境。生产、预发和发布环境不要开启配置文件账号兜底。
 
 后续生产增强：
 
@@ -227,7 +227,7 @@ if (totalSize > maxBatchBytes) {
 
 1. 安装包上传完成并通过 SHA256 / 签名校验。
 2. 写入 `scan_status=0`，表示待扫描。
-3. 管理员调用本地模拟扫描接口，写入 `scan_status=1/2/3` 和 `scan_report`。
+3. 管理员调用本地模拟扫描接口，必须显式提交 `result=safe/risky/failed`，写入 `scan_status=1/2/3` 和 `scan_report`。
 4. 审核通过或上架前检查扫描状态，只有 `scan_status=1` 允许继续。
 
 后续生产演进：

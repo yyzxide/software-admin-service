@@ -8,6 +8,7 @@ import com.xcappstore.admin.auth.rbac.AdminUserEntity;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.exception.BusinessException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
@@ -30,6 +31,7 @@ public class AdminTokenService {
     private final String adminPasswordSha256;
     private final String tokenSecret;
     private final long ttlSeconds;
+    private final boolean localAdminEnabled;
     private final AdminRbacMapper rbacMapper;
     private final PasswordHashService passwordHashService;
 
@@ -44,6 +46,7 @@ public class AdminTokenService {
         @Value("${admin.security.password-sha256:}") String adminPasswordSha256,
         @Value("${admin.security.token-secret:change-me-local-development-secret}") String tokenSecret,
         @Value("${admin.security.ttl-seconds:7200}") long ttlSeconds,
+        @Value("${admin.security.local-admin-enabled:false}") boolean localAdminEnabled,
         @Value("${spring.profiles.active:}") String activeProfiles
     ) {
         this.rbacMapper = rbacMapper;
@@ -55,7 +58,36 @@ public class AdminTokenService {
         this.adminPasswordSha256 = adminPasswordSha256;
         this.tokenSecret = tokenSecret;
         this.ttlSeconds = ttlSeconds;
+        this.localAdminEnabled = localAdminEnabled;
         rejectDefaultSecretOutsideLocalProfile(activeProfiles);
+        rejectLocalAdminOutsideLocalProfile(activeProfiles);
+    }
+
+    public AdminTokenService(
+        AdminRbacMapper rbacMapper,
+        PasswordHashService passwordHashService,
+        Long adminUserId,
+        String adminUsername,
+        String adminPassword,
+        String adminPasswordHash,
+        String adminPasswordSha256,
+        String tokenSecret,
+        long ttlSeconds,
+        String activeProfiles
+    ) {
+        this(
+            rbacMapper,
+            passwordHashService,
+            adminUserId,
+            adminUsername,
+            adminPassword,
+            adminPasswordHash,
+            adminPasswordSha256,
+            tokenSecret,
+            ttlSeconds,
+            false,
+            activeProfiles
+        );
     }
 
     public AdminTokenService(
@@ -66,7 +98,7 @@ public class AdminTokenService {
         String tokenSecret,
         long ttlSeconds
     ) {
-        this(null, new PasswordHashService(), adminUserId, adminUsername, adminPassword, "", adminPasswordSha256, tokenSecret, ttlSeconds, "test");
+        this(null, new PasswordHashService(), adminUserId, adminUsername, adminPassword, "", adminPasswordSha256, tokenSecret, ttlSeconds, true, "local");
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -76,6 +108,9 @@ public class AdminTokenService {
             if (user != null) {
                 return loginDbUser(user, request.getPassword());
             }
+        }
+        if (!localAdminEnabled) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
         }
         if (!adminUsername.equals(username) || !passwordMatches(request.getPassword())) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
@@ -122,22 +157,22 @@ public class AdminTokenService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
         }
 
-        String[] parts = token.split("\\.", -1);
-        if (parts.length != 2) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
-        }
-
-        String payload = decode(parts[0]);
-        if (!sign(payload).equals(parts[1])) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
-        }
-
-        String[] fields = payload.split("\\|", -1);
-        if (fields.length != 4 && fields.length != 6) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
-        }
-
         try {
+            String[] parts = token.split("\\.", -1);
+            if (parts.length != 2) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+            }
+
+            String payload = decode(parts[0]);
+            if (!signatureMatches(sign(payload), parts[1])) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+            }
+
+            String[] fields = payload.split("\\|", -1);
+            if (fields.length != 4 && fields.length != 6) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+            }
+
             long userId = Long.parseLong(fields[0]);
             String username = fields[1];
             String userType = fields[2];
@@ -148,7 +183,9 @@ public class AdminTokenService {
             }
             verifyDbPrincipal(userId, username, userType, tokenVersion, fields.length == 6);
             return new AdminPrincipal(userId, username, userType, expiresAt);
-        } catch (NumberFormatException ex) {
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
         }
     }
@@ -193,6 +230,16 @@ public class AdminTokenService {
         }
     }
 
+    private void rejectLocalAdminOutsideLocalProfile(String activeProfiles) {
+        if (!localAdminEnabled) {
+            return;
+        }
+        String profiles = activeProfiles == null ? "" : activeProfiles.toLowerCase();
+        if (!profiles.contains("local") && !profiles.contains("dev")) {
+            throw new IllegalStateException("配置管理员入口只能在 local/dev 环境开启");
+        }
+    }
+
     private String encode(String value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
@@ -209,5 +256,12 @@ public class AdminTokenService {
         } catch (Exception ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "登录签名失败");
         }
+    }
+
+    private boolean signatureMatches(String expected, String actual) {
+        return MessageDigest.isEqual(
+            expected.getBytes(StandardCharsets.UTF_8),
+            (actual == null ? "" : actual).getBytes(StandardCharsets.UTF_8)
+        );
     }
 }
