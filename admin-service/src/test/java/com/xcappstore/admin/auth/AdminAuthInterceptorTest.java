@@ -7,6 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.auth.rbac.AdminPermissionMapper;
 import com.xcappstore.admin.auth.rbac.AdminPermissionService;
 import com.xcappstore.admin.auth.rbac.RequirePermission;
+import com.xcappstore.admin.auth.rbac.AdminRbacMapper;
+import com.xcappstore.admin.auth.rbac.AdminUserEntity;
+import com.xcappstore.admin.auth.rbac.AdminRoleEntity;
+import com.xcappstore.admin.auth.rbac.AdminPermissionEntity;
 import com.xcappstore.admin.common.ErrorCode;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -33,7 +37,7 @@ class AdminAuthInterceptorTest {
 
     @Test
     void returnsForbiddenHttpStatusWhenPermissionMissing() throws Exception {
-        AdminTokenService tokenService = new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L);
+        AdminTokenService tokenService = tokenService();
         AdminAuthInterceptor interceptor = interceptor(tokenService, List.of("software:view"));
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/admin/software/apps");
         request.addHeader("Authorization", "Bearer " + tokenService.login(loginRequest()).getAccessToken());
@@ -47,7 +51,7 @@ class AdminAuthInterceptorTest {
     }
 
     private AdminAuthInterceptor interceptor(List<String> permissions) {
-        return interceptor(new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L), permissions);
+        return interceptor(tokenService(), permissions);
     }
 
     private AdminAuthInterceptor interceptor(AdminTokenService tokenService, List<String> permissions) {
@@ -72,9 +76,49 @@ class AdminAuthInterceptorTest {
         return objectMapper.readTree(response.getContentAsByteArray()).get("code").asInt();
     }
 
+    private AdminTokenService tokenService() {
+        return new AdminTokenService(new FakeRbacMapper(), new PasswordHashService(), "test-secret", 7200L, "test");
+    }
+
     private static final class SecuredController {
         @RequirePermission("software:create")
         public void create() {
         }
+    }
+
+    private static final class FakeRbacMapper implements AdminRbacMapper {
+        private final AdminUserEntity user;
+
+        private FakeRbacMapper() {
+            this.user = new AdminUserEntity();
+            this.user.setId(1L);
+            this.user.setUsername("admin");
+            this.user.setStatus(1);
+            this.user.setPasswordHash(new PasswordHashService().hash("admin123456"));
+            this.user.setTokenVersion(0L);
+        }
+
+        @Override public AdminUserEntity selectUserById(Long id) { return user.getId().equals(id) ? user : null; }
+        @Override public AdminUserEntity selectUserByUsername(String username) { return user.getUsername().equals(username) ? user : null; }
+        @Override public List<AdminUserEntity> selectUsers(String keyword, Integer status) { return List.of(); }
+        @Override public long countUsersByUsername(String username, Long excludeId) { return 0; }
+        @Override public int insertUser(AdminUserEntity user) { return 0; }
+        @Override public int updateUser(AdminUserEntity user) { return 0; }
+        @Override public int updateUserStatus(Long id, Integer status) { return 0; }
+        @Override public int updateUserPassword(Long id, String passwordHash) { return 0; }
+        @Override public List<AdminRoleEntity> selectRoles(String keyword, Integer status) { return List.of(); }
+        @Override public AdminRoleEntity selectRoleById(Long id) { return null; }
+        @Override public long countRolesByCode(String roleCode, Long excludeId) { return 0; }
+        @Override public long countRolesByIds(List<Long> roleIds) { return 0; }
+        @Override public int insertRole(AdminRoleEntity role) { return 0; }
+        @Override public int updateRole(AdminRoleEntity role) { return 0; }
+        @Override public List<AdminPermissionEntity> selectPermissions(String module, Integer status) { return List.of(); }
+        @Override public long countPermissionsByIds(List<Long> permissionIds) { return 0; }
+        @Override public List<AdminRoleEntity> selectRolesByUserId(Long userId) { return List.of(); }
+        @Override public List<AdminPermissionEntity> selectPermissionsByRoleId(Long roleId) { return List.of(); }
+        @Override public int deleteUserRoles(Long userId) { return 0; }
+        @Override public int insertUserRole(Long userId, Long roleId) { return 0; }
+        @Override public int deleteRolePermissions(Long roleId) { return 0; }
+        @Override public int insertRolePermission(Long roleId, Long permissionId) { return 0; }
     }
 }

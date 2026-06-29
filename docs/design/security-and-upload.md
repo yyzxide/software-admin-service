@@ -6,7 +6,7 @@
 
 ## 登录和 Token
 
-后台登录优先使用数据库管理员账号，登录成功后签发 HMAC Token。配置文件账号保留为本地开发兜底。
+后台登录只使用数据库管理员账号，登录成功后签发 HMAC Token。初始化 SQL 会创建默认 `admin` 管理员，后续账号新增、禁用、重置密码和角色授权都走 RBAC 管理链路。
 
 当前能力：
 
@@ -20,7 +20,7 @@
 - `admin_users.password_hash` 是管理员登录的优先来源，新建和重置密码使用 BCrypt。
 - 历史 `password_sha256` 只作为兼容字段，旧账号登录成功后会自动升级为 BCrypt 哈希。
 - 权限管理页面支持新增管理员、重置密码、启停账号、分配角色、新增角色和分配权限点。
-- 配置文件账号只作为本地开发兜底，默认关闭；只有 `local` 或 `dev` Profile 且显式设置 `ADMIN_SECURITY_LOCAL_ADMIN_ENABLED=true` 时，才会在数据库账号不存在时回退到 `ADMIN_SECURITY_USERNAME`、`ADMIN_SECURITY_PASSWORD`、`ADMIN_SECURITY_PASSWORD_HASH` 或 `ADMIN_SECURITY_PASSWORD_SHA256`。
+- 登录和 Token 验证使用同一套数据库身份来源，避免配置文件管理员登录成功后因数据库不存在该用户而鉴权失败。
 
 示例：
 
@@ -29,7 +29,7 @@ ADMIN_SECURITY_TOKEN_SECRET=<long-random-secret> \
 make run
 ```
 
-如果需要给本地兜底账号配置哈希密码，优先使用 `ADMIN_SECURITY_PASSWORD_HASH`；旧的 `ADMIN_SECURITY_PASSWORD_SHA256` 只用于兼容演示环境。生产、预发和发布环境不要开启配置文件账号兜底。
+默认管理员密码由初始化 SQL 写入数据库；旧的 `password_sha256` 仅用于历史账号兼容升级，不再作为配置文件登录入口。
 
 后续生产增强：
 
@@ -158,7 +158,7 @@ ADMIN_UPLOAD_CLEANUP_FIXED_DELAY_MS=3600000
 详细设计见：
 
 ```text
-docs/upload-resume-and-signature.md
+docs/design/upload-resume-and-signature.md
 ```
 
 ## 完整性和签名校验

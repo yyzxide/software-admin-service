@@ -24,14 +24,8 @@ public class AdminTokenService {
     private static final String USER_TYPE_ADMIN = "admin";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
-    private final Long adminUserId;
-    private final String adminUsername;
-    private final String adminPassword;
-    private final String adminPasswordHash;
-    private final String adminPasswordSha256;
     private final String tokenSecret;
     private final long ttlSeconds;
-    private final boolean localAdminEnabled;
     private final AdminRbacMapper rbacMapper;
     private final PasswordHashService passwordHashService;
 
@@ -39,84 +33,24 @@ public class AdminTokenService {
     public AdminTokenService(
         AdminRbacMapper rbacMapper,
         PasswordHashService passwordHashService,
-        @Value("${admin.security.user-id:1}") Long adminUserId,
-        @Value("${admin.security.username:admin}") String adminUsername,
-        @Value("${admin.security.password:admin123456}") String adminPassword,
-        @Value("${admin.security.password-hash:}") String adminPasswordHash,
-        @Value("${admin.security.password-sha256:}") String adminPasswordSha256,
         @Value("${admin.security.token-secret:change-me-local-development-secret}") String tokenSecret,
         @Value("${admin.security.ttl-seconds:7200}") long ttlSeconds,
-        @Value("${admin.security.local-admin-enabled:false}") boolean localAdminEnabled,
         @Value("${spring.profiles.active:}") String activeProfiles
     ) {
         this.rbacMapper = rbacMapper;
         this.passwordHashService = passwordHashService;
-        this.adminUserId = adminUserId;
-        this.adminUsername = adminUsername;
-        this.adminPassword = adminPassword;
-        this.adminPasswordHash = adminPasswordHash;
-        this.adminPasswordSha256 = adminPasswordSha256;
         this.tokenSecret = tokenSecret;
         this.ttlSeconds = ttlSeconds;
-        this.localAdminEnabled = localAdminEnabled;
         rejectDefaultSecretOutsideLocalProfile(activeProfiles);
-        rejectLocalAdminOutsideLocalProfile(activeProfiles);
-    }
-
-    public AdminTokenService(
-        AdminRbacMapper rbacMapper,
-        PasswordHashService passwordHashService,
-        Long adminUserId,
-        String adminUsername,
-        String adminPassword,
-        String adminPasswordHash,
-        String adminPasswordSha256,
-        String tokenSecret,
-        long ttlSeconds,
-        String activeProfiles
-    ) {
-        this(
-            rbacMapper,
-            passwordHashService,
-            adminUserId,
-            adminUsername,
-            adminPassword,
-            adminPasswordHash,
-            adminPasswordSha256,
-            tokenSecret,
-            ttlSeconds,
-            false,
-            activeProfiles
-        );
-    }
-
-    public AdminTokenService(
-        Long adminUserId,
-        String adminUsername,
-        String adminPassword,
-        String adminPasswordSha256,
-        String tokenSecret,
-        long ttlSeconds
-    ) {
-        this(null, new PasswordHashService(), adminUserId, adminUsername, adminPassword, "", adminPasswordSha256, tokenSecret, ttlSeconds, true, "local");
     }
 
     public LoginResponse login(LoginRequest request) {
         String username = request.getUsername();
-        if (rbacMapper != null) {
-            AdminUserEntity user = rbacMapper.selectUserByUsername(username);
-            if (user != null) {
-                return loginDbUser(user, request.getPassword());
-            }
-        }
-        if (!localAdminEnabled) {
+        AdminUserEntity user = rbacMapper == null ? null : rbacMapper.selectUserByUsername(username);
+        if (user == null) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
         }
-        if (!adminUsername.equals(username) || !passwordMatches(request.getPassword())) {
-            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
-        }
-
-        return issueToken(adminUserId, adminUsername, USER_TYPE_ADMIN, 0L);
+        return loginDbUser(user, request.getPassword());
     }
 
     private LoginResponse loginDbUser(AdminUserEntity user, String rawPassword) {
@@ -194,17 +128,9 @@ public class AdminTokenService {
         return new AdminUserResponse(principal.getUserId(), principal.getUsername(), principal.getUserType(), principal.getExpiresAt());
     }
 
-    private boolean passwordMatches(String rawPassword) {
-        String password = rawPassword == null ? "" : rawPassword;
-        if (StringUtils.hasText(adminPasswordHash) || StringUtils.hasText(adminPasswordSha256)) {
-            return passwordHashService.matches(password, adminPasswordHash, adminPasswordSha256);
-        }
-        return adminPassword.equals(password);
-    }
-
     private void verifyDbPrincipal(Long userId, String username, String userType, long tokenVersion, boolean versionedToken) {
         if (rbacMapper == null || !USER_TYPE_ADMIN.equals(userType)) {
-            return;
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
         }
         AdminUserEntity user = rbacMapper.selectUserById(userId);
         if (user == null || !Integer.valueOf(1).equals(user.getStatus()) || !username.equals(user.getUsername())) {
@@ -227,16 +153,6 @@ public class AdminTokenService {
         String profiles = activeProfiles == null ? "" : activeProfiles.toLowerCase();
         if (profiles.contains("prod") || profiles.contains("stage") || profiles.contains("release")) {
             throw new IllegalStateException("非本地环境必须配置 ADMIN_SECURITY_TOKEN_SECRET");
-        }
-    }
-
-    private void rejectLocalAdminOutsideLocalProfile(String activeProfiles) {
-        if (!localAdminEnabled) {
-            return;
-        }
-        String profiles = activeProfiles == null ? "" : activeProfiles.toLowerCase();
-        if (!profiles.contains("local") && !profiles.contains("dev")) {
-            throw new IllegalStateException("配置管理员入口只能在 local/dev 环境开启");
         }
     }
 

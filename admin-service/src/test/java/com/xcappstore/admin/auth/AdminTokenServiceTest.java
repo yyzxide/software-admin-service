@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class AdminTokenServiceTest {
     @Test
     void issuesAndVerifiesToken() {
-        AdminTokenService service = new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L);
+        AdminTokenService service = serviceWithUser(1L, "admin", "admin123456");
         LoginRequest request = new LoginRequest();
         request.setUsername("admin");
         request.setPassword("admin123456");
@@ -32,7 +32,7 @@ class AdminTokenServiceTest {
 
     @Test
     void rejectsWrongPassword() {
-        AdminTokenService service = new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L);
+        AdminTokenService service = serviceWithUser(1L, "admin", "admin123456");
         LoginRequest request = new LoginRequest();
         request.setUsername("admin");
         request.setPassword("bad-password");
@@ -44,14 +44,12 @@ class AdminTokenServiceTest {
 
     @Test
     void acceptsSha256PasswordHashWhenConfigured() {
-        AdminTokenService service = new AdminTokenService(
-            1L,
-            "admin",
-            "",
-            "ac0e7d037817094e9e0b4441f9bae3209d67b02fa484917065f71b16109a1a78",
-            "test-secret",
-            7200L
-        );
+        FakeRbacMapper mapper = new FakeRbacMapper();
+        AdminUserEntity user = user(1L, "admin");
+        user.setPasswordHash("");
+        user.setPasswordSha256("ac0e7d037817094e9e0b4441f9bae3209d67b02fa484917065f71b16109a1a78");
+        mapper.user = user;
+        AdminTokenService service = new AdminTokenService(mapper, new PasswordHashService(), "test-secret", 7200L, "test");
         LoginRequest request = new LoginRequest();
         request.setUsername("admin");
         request.setPassword("admin123456");
@@ -75,11 +73,6 @@ class AdminTokenServiceTest {
         AdminTokenService service = new AdminTokenService(
             mapper,
             new PasswordHashService(),
-            1L,
-            "admin",
-            "admin123456",
-            "",
-            "",
             "test-secret",
             7200L,
             "test"
@@ -109,11 +102,6 @@ class AdminTokenServiceTest {
         AdminTokenService service = new AdminTokenService(
             mapper,
             new PasswordHashService(),
-            1L,
-            "admin",
-            "admin123456",
-            "",
-            "",
             "test-secret",
             7200L,
             "test"
@@ -132,7 +120,7 @@ class AdminTokenServiceTest {
 
     @Test
     void rejectsMalformedBase64TokenAsUnauthorized() {
-        AdminTokenService service = new AdminTokenService(1L, "admin", "admin123456", "", "test-secret", 7200L);
+        AdminTokenService service = serviceWithUser(1L, "admin", "admin123456");
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.verify("@@@.signature"));
 
@@ -140,22 +128,10 @@ class AdminTokenServiceTest {
     }
 
     @Test
-    void rejectsConfigAdminWhenLocalFallbackDisabled() {
-        AdminTokenService service = new AdminTokenService(
-            null,
-            new PasswordHashService(),
-            1L,
-            "admin",
-            "admin123456",
-            "",
-            "",
-            "test-secret",
-            7200L,
-            false,
-            ""
-        );
+    void rejectsUnknownUsernameWithoutConfigFallback() {
+        AdminTokenService service = serviceWithUser(1L, "admin", "admin123456");
         LoginRequest request = new LoginRequest();
-        request.setUsername("admin");
+        request.setUsername("missing-admin");
         request.setPassword("admin123456");
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.login(request));
@@ -163,23 +139,20 @@ class AdminTokenServiceTest {
         assertEquals(ErrorCode.PERMISSION_DENIED, ex.getCode());
     }
 
-    @Test
-    void rejectsLocalAdminOutsideLocalProfile() {
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> new AdminTokenService(
-            null,
-            new PasswordHashService(),
-            1L,
-            "admin",
-            "admin123456",
-            "",
-            "",
-            "test-secret",
-            7200L,
-            true,
-            "prod"
-        ));
+    private AdminTokenService serviceWithUser(Long id, String username, String rawPassword) {
+        FakeRbacMapper mapper = new FakeRbacMapper();
+        mapper.user = user(id, username);
+        mapper.user.setPasswordHash(new PasswordHashService().hash(rawPassword));
+        return new AdminTokenService(mapper, new PasswordHashService(), "test-secret", 7200L, "test");
+    }
 
-        assertEquals("配置管理员入口只能在 local/dev 环境开启", ex.getMessage());
+    private AdminUserEntity user(Long id, String username) {
+        AdminUserEntity user = new AdminUserEntity();
+        user.setId(id);
+        user.setUsername(username);
+        user.setStatus(1);
+        user.setTokenVersion(0L);
+        return user;
     }
 
     private static final class FakeRbacMapper implements AdminRbacMapper {

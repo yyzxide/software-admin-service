@@ -168,10 +168,7 @@ make smoke
 常用安全配置：
 
 ```bash
-ADMIN_SECURITY_USERNAME=admin \
-ADMIN_SECURITY_PASSWORD_HASH=<bcrypt-password-hash> \
 ADMIN_SECURITY_TOKEN_SECRET=<long-random-secret> \
-ADMIN_SECURITY_LOCAL_ADMIN_ENABLED=false \
 ADMIN_UPLOAD_MAX_FILE_SIZE=500MB \
 ADMIN_UPLOAD_MAX_REQUEST_SIZE=600MB \
 ADMIN_UPLOAD_MAX_PACKAGE_SIZE=500MB \
@@ -190,8 +187,8 @@ make run
 大文件上传和签名校验设计见：
 
 ```text
-docs/upload-resume-and-signature.md
-docs/security-and-upload.md
+docs/design/upload-resume-and-signature.md
+docs/design/security-and-upload.md
 ```
 
 ## 数据库
@@ -276,7 +273,7 @@ Authorization: Bearer <token>
 详细 curl 示例见：
 
 ```text
-docs/admin-software-api.md
+docs/api/admin-software-api.md
 ```
 
 在线调试可以使用 Swagger UI：
@@ -304,16 +301,12 @@ http://127.0.0.1:8090/swagger-ui.html
 
 ## 文档
 
-- `docs/clone-and-run.md`：干净环境克隆、配置和启动步骤。
-- `docs/project-outline.md`：项目设计总览。
-- `docs/rbac-design.md`：RBAC 权限模型设计。
-- `docs/id-and-business-key-design.md`：数据库 ID、业务编码和页面展示边界设计。
-- `docs/security-and-upload.md`：安全和上传限制设计。
-- `docs/upload-resume-and-signature.md`：分片上传、断点续传和签名校验设计。
-- `docs/demo-checklist.md`：本地演示和验收清单。
-- `docs/resume-bullets.md`：简历写法和面试表达。
-- `docs/status-and-next-steps.md`：当前进度和后续路线。
-- `docs/admin-software-api.md`：接口示例。
-- `docs/interview-guide.md`：面试讲解稿。
-- `docs/defect-and-optimization-plan.md`：缺陷和优化计划。
-- `docs/windows-wsl-setup.md`：Windows / WSL 运行说明。
+文档入口见 [docs/README.md](docs/README.md)。
+
+常用入口：
+
+- [项目设计总览](docs/overview/project-outline.md)
+- [架构和核心流程图](docs/overview/architecture-and-flows.md)
+- [干净环境克隆和运行指南](docs/runbook/clone-and-run.md)
+- [后台接口示例](docs/api/admin-software-api.md)
+- [面试讲解稿](docs/interview/interview-guide.md)

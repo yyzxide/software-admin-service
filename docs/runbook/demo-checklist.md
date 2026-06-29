@@ -58,7 +58,7 @@ make smoke
 3. 打开“接口文档”，展示 Swagger UI。
 4. 回到“软件管理”，查询软件列表。
 5. 上传一个 `.deb`、`.rpm` 或 `.appimage` 测试包。
-6. 打开 `docs/upload-resume-and-signature.md`，说明大文件分片上传、断点续传和签名校验。
+6. 打开 `docs/design/upload-resume-and-signature.md`，说明大文件分片上传、断点续传和签名校验。
 7. 查看软件详情。
 8. 点击“提审”。
 9. 到“审核中心”，刷新审核任务。
