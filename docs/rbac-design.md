@@ -48,6 +48,7 @@ software:publish
 software:unpublish
 software:version:create
 software:package:create
+software:package:scan
 software:upload
 review:view
 review:submit
@@ -97,9 +98,9 @@ public ApiResponse<SoftwareResponse> publish(...) {
 - 用户角色：给管理员分配一个或多个角色。
 - 角色管理：新增角色、启用/禁用角色。
 - 角色权限：给角色分配权限点。
-- 登录链路：优先使用数据库 `admin_users.password_sha256` 校验，保留配置文件账号作为本地兜底。
+- 登录链路：优先使用数据库 `admin_users.password_hash` 校验，新建和重置密码使用 BCrypt，历史 `password_sha256` 只做兼容升级。
 
-当前密码哈希使用 SHA-256，适合演示和研发环境。生产环境建议升级为 BCrypt/Argon2，并补充登录失败次数限制、密码复杂度策略和操作审计。
+当前已经使用 BCrypt 慢哈希和 Token 会话版本。生产环境还应继续补充登录失败次数限制、密码复杂度策略和操作审计脱敏。
 
 ## 面试讲法
 

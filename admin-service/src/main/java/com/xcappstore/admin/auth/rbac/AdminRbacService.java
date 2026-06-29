@@ -1,5 +1,6 @@
 package com.xcappstore.admin.auth.rbac;
 
+import com.xcappstore.admin.auth.PasswordHashService;
 import com.xcappstore.admin.auth.rbac.dto.AdminPasswordResetRequest;
 import com.xcappstore.admin.auth.rbac.dto.AdminPermissionResponse;
 import com.xcappstore.admin.auth.rbac.dto.AdminRoleCreateRequest;
@@ -13,12 +14,9 @@ import com.xcappstore.admin.auth.rbac.dto.AdminUserStatusRequest;
 import com.xcappstore.admin.auth.rbac.dto.AdminUserUpdateRequest;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.exception.BusinessException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,9 +29,11 @@ public class AdminRbacService {
     private static final long SUPER_ADMIN_USER_ID = 1L;
 
     private final AdminRbacMapper mapper;
+    private final PasswordHashService passwordHashService;
 
-    public AdminRbacService(AdminRbacMapper mapper) {
+    public AdminRbacService(AdminRbacMapper mapper, PasswordHashService passwordHashService) {
         this.mapper = mapper;
+        this.passwordHashService = passwordHashService;
     }
 
     public List<AdminUserManageResponse> listUsers(String keyword, Integer status) {
@@ -52,8 +52,9 @@ public class AdminRbacService {
         AdminUserEntity user = new AdminUserEntity();
         user.setUsername(username);
         user.setDisplayName(defaultText(request.getDisplayName(), username));
-        user.setPasswordSha256(sha256Hex(request.getPassword()));
+        user.setPasswordHash(passwordHashService.hash(request.getPassword()));
         user.setStatus(1);
+        user.setTokenVersion(0L);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         mapper.insertUser(user);
@@ -91,7 +92,7 @@ public class AdminRbacService {
     @Transactional
     public AdminUserManageResponse resetPassword(Long id, AdminPasswordResetRequest request) {
         requireUser(id);
-        mapper.updateUserPassword(id, sha256Hex(request.getPassword()));
+        mapper.updateUserPassword(id, passwordHashService.hash(request.getPassword()));
         return detailUser(id);
     }
 
@@ -273,14 +274,5 @@ public class AdminRbacService {
     private String defaultText(String value, String fallback) {
         String normalized = normalizeText(value);
         return StringUtils.hasText(normalized) ? normalized : fallback;
-    }
-
-    private String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "密码加密失败");
-        }
     }
 }

@@ -67,11 +67,11 @@
 
 ### Q4：怎么优化上传？
 
-当前已经支持普通 Multipart、分片上传和过期上传会话清理。后续优化重点是正式包孤儿文件清理、对象存储和病毒扫描执行器。
+当前已经支持普通 Multipart、分片上传、过期上传会话清理和本地模拟扫描。后续优化重点是正式包孤儿文件清理、对象存储和真实病毒扫描执行器。
 
 ### Q5：怎么做权限？
 
-当前采用 RBAC：`admin_users`、`admin_roles`、`admin_permissions`、`admin_user_roles`、`admin_role_permissions`。请求先经过 Token 鉴权，再由拦截器读取 Controller 上的 `@RequirePermission`，根据当前管理员角色权限判断是否允许访问。默认 `admin` 绑定 `super_admin`，拥有 `*` 通配权限。后台提供权限管理页面，可以创建运营、审核、只读等账号，给用户分配角色，再给角色分配权限点。
+当前采用 RBAC：`admin_users`、`admin_roles`、`admin_permissions`、`admin_user_roles`、`admin_role_permissions`。请求先经过 Token 鉴权，再由拦截器读取 Controller 上的 `@RequirePermission`，根据当前管理员角色权限判断是否允许访问。管理员密码使用 BCrypt 哈希，Token 带会话版本，账号禁用或密码重置后旧 Token 会失效。默认 `admin` 绑定 `super_admin`，拥有 `*` 通配权限。后台提供权限管理页面，可以创建运营、审核、只读等账号，给用户分配角色，再给角色分配权限点。
 
 ### Q6：多个文件总大小过大怎么办？
 

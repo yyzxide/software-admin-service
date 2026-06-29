@@ -134,6 +134,7 @@
             status = #{status},
             updated_at = #{updatedAt}
         WHERE id = #{id}
+          AND status IN (0, 1)
     </update>
 
     <update id="finish">
@@ -144,5 +145,6 @@
             reviewed_at = #{reviewedAt},
             updated_at = #{updatedAt}
         WHERE id = #{id}
+          AND status IN (0, 1)
     </update>
 </mapper>

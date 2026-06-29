@@ -12,6 +12,7 @@ import com.xcappstore.admin.operationlog.service.OperationLogService;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
+import com.xcappstore.admin.software.dto.PackageScanRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
 import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
@@ -46,9 +47,10 @@ class SoftwareServiceImplTest {
         softwareService = new SoftwareServiceImpl(
             softwareMapper,
             softwareCacheService,
-            new FakePackageFileStorageService(),
-            new FakePackageUploadSessionService(),
             new PackageSecurityPolicyService(softwareMapper),
+            new PackageScanPolicyService(),
+            new PackagePreparationService(new FakePackageFileStorageService(), new FakePackageUploadSessionService()),
+            new SoftwareAssembler(new ObjectMapper()),
             new FakeOperationLogService(),
             new ObjectMapper()
         );
@@ -90,21 +92,31 @@ class SoftwareServiceImplTest {
     }
 
     @Test
-    void publishesSoftwareAndApprovesDraftVersions() {
-        softwareMapper.apps.put(1L, app(1L, "待上架软件", 1));
+    void publishesApprovedUnpublishedSoftware() {
+        softwareMapper.apps.put(1L, app(1L, "待上架软件", 3));
 
         SoftwareResponse response = softwareService.publish(1L, 99L);
 
         assertEquals(2, softwareMapper.apps.get(1L).getStatus());
         assertEquals(99L, softwareMapper.apps.get(1L).getUpdatedBy());
-        assertEquals(1, softwareMapper.approvedVersionCount);
+        assertEquals(0, softwareMapper.approvedVersionCount);
         assertEquals("已上架", response.getStatusText());
         assertEquals(1, softwareCacheService.invalidateCount);
     }
 
     @Test
+    void rejectsPublishForDraftSoftware() {
+        softwareMapper.apps.put(1L, app(1L, "草稿软件", 0));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
+
+        assertEquals(ErrorCode.SOFTWARE_INVALID_STATUS, ex.getCode());
+        assertEquals("软件需审核通过后才能上架", ex.getMessage());
+    }
+
+    @Test
     void rejectsPublishWhenPackageScanIsRisky() {
-        softwareMapper.apps.put(1L, app(1L, "风险软件", 1));
+        softwareMapper.apps.put(1L, app(1L, "风险软件", 3));
         AppPackageEntity packageInfo = new AppPackageEntity();
         packageInfo.setId(10L);
         packageInfo.setAppId(1L);
@@ -116,7 +128,24 @@ class SoftwareServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
 
         assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
-        assertEquals("安装包安全扫描有风险，不能上架: risky.deb", ex.getMessage());
+        assertEquals("安装包未通过安全扫描，不能上架: risky.deb", ex.getMessage());
+    }
+
+    @Test
+    void rejectsPublishWhenPackageScanIsMissing() {
+        softwareMapper.apps.put(1L, app(1L, "未扫描软件", 3));
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(10L);
+        packageInfo.setAppId(1L);
+        packageInfo.setVersionId(1L);
+        packageInfo.setFileName("unscanned.deb");
+        packageInfo.setScanStatus(0);
+        softwareMapper.packages.put(10L, packageInfo);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("安装包未通过安全扫描，不能上架: unscanned.deb", ex.getMessage());
     }
 
     @Test
@@ -136,17 +165,40 @@ class SoftwareServiceImplTest {
         request.setArch("x86_64");
         request.setPackageFormat("deb");
         request.setTagIds("2");
-        request.setPublishNow(true);
         request.setPackageFile(new MockMultipartFile("package_file", "editor.deb", "application/octet-stream", "deb".getBytes()));
 
         SoftwareResponse response = softwareService.upload(request, 99L);
 
         assertEquals("文本编辑器", response.getName());
-        assertEquals(2, softwareMapper.apps.get(response.getId()).getStatus());
+        assertEquals(0, softwareMapper.apps.get(response.getId()).getStatus());
         assertEquals(1, softwareMapper.versions.size());
         assertEquals(1, softwareMapper.packages.size());
         assertEquals(1, softwareMapper.appTagCount);
         assertEquals("fake-sha256", softwareMapper.packages.values().iterator().next().getSha256());
+    }
+
+    @Test
+    void rejectsUploadPublishNowBypassingReview() {
+        softwareMapper.categoryCount = 1L;
+
+        SoftwareUploadRequest request = new SoftwareUploadRequest();
+        request.setAppKey("com.example.editor");
+        request.setName("文本编辑器");
+        request.setCategoryId(1L);
+        request.setSummary("国产系统文本编辑器");
+        request.setDescription("description");
+        request.setVersionName("1.0.0");
+        request.setVersionCode(100L);
+        request.setOsType("uos_v20");
+        request.setArch("x86_64");
+        request.setPackageFormat("deb");
+        request.setPublishNow(true);
+        request.setPackageFile(new MockMultipartFile("package_file", "editor.deb", "application/octet-stream", "deb".getBytes()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.upload(request, 99L));
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("直接发布已关闭，请先提交审核并在审核通过后上架", ex.getMessage());
     }
 
     @Test
@@ -226,7 +278,7 @@ class SoftwareServiceImplTest {
     }
 
     @Test
-    void appendsPublishedVersionAndPackage() {
+    void appendsDraftVersionAndPackage() {
         softwareMapper.apps.put(1L, app(1L, "版本软件", 3));
 
         VersionCreateRequest request = new VersionCreateRequest();
@@ -236,17 +288,35 @@ class SoftwareServiceImplTest {
         request.setOsType("uos_v20");
         request.setArch("x86_64");
         request.setPackageFormat("deb");
-        request.setPublishNow(true);
         request.setPackageFile(new MockMultipartFile("package_file", "editor-2.deb", "application/octet-stream", "deb".getBytes()));
 
         AppVersionResponse response = softwareService.addVersion(1L, request, 99L);
 
         assertEquals("2.0.0", response.getVersionName());
-        assertEquals(2, response.getStatus());
-        assertEquals(1, response.getIsLatest());
+        assertEquals(0, response.getStatus());
+        assertEquals(0, response.getIsLatest());
         assertEquals(1, response.getPackages().size());
-        assertEquals(2, softwareMapper.apps.get(1L).getStatus());
-        assertEquals(1, softwareMapper.markNotLatestCount);
+        assertEquals(3, softwareMapper.apps.get(1L).getStatus());
+        assertEquals(0, softwareMapper.markNotLatestCount);
+    }
+
+    @Test
+    void rejectsAddVersionPublishNowBypassingReview() {
+        softwareMapper.apps.put(1L, app(1L, "版本软件", 3));
+
+        VersionCreateRequest request = new VersionCreateRequest();
+        request.setVersionName("2.0.0");
+        request.setVersionCode(200L);
+        request.setOsType("uos_v20");
+        request.setArch("x86_64");
+        request.setPackageFormat("deb");
+        request.setPublishNow(true);
+        request.setPackageFile(new MockMultipartFile("package_file", "editor-2.deb", "application/octet-stream", "deb".getBytes()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.addVersion(1L, request, 99L));
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("直接发布已关闭，请先提交审核并在审核通过后上架", ex.getMessage());
     }
 
     @Test
@@ -273,6 +343,28 @@ class SoftwareServiceImplTest {
         assertEquals("aarch64", response.getArch());
         assertEquals("可用", response.getStatusText());
         assertEquals(1, softwareMapper.packages.size());
+    }
+
+    @Test
+    void scansPackageAsSafeAndAllowsPublish() {
+        softwareMapper.apps.put(1L, app(1L, "扫描软件", 3));
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(10L);
+        packageInfo.setAppId(1L);
+        packageInfo.setVersionId(1L);
+        packageInfo.setFileName("safe.deb");
+        packageInfo.setScanStatus(0);
+        softwareMapper.packages.put(10L, packageInfo);
+        PackageScanRequest scanRequest = new PackageScanRequest();
+        scanRequest.setResult("safe");
+
+        AppPackageResponse scanResponse = softwareService.scanPackage(1L, 10L, scanRequest, 99L);
+        SoftwareResponse publishResponse = softwareService.publish(1L, 99L);
+
+        assertEquals(1, scanResponse.getScanStatus());
+        assertEquals("安全", scanResponse.getScanStatusText());
+        assertEquals("本地模拟扫描通过", softwareMapper.packages.get(10L).getScanReport());
+        assertEquals("已上架", publishResponse.getStatusText());
     }
 
     private SoftwareEntity app(Long id, String name, Integer status) {
@@ -446,6 +538,23 @@ class SoftwareServiceImplTest {
             return packages.values().stream()
                 .filter(packageInfo -> appId.equals(packageInfo.getAppId()))
                 .toList();
+        }
+
+        @Override
+        public AppPackageEntity selectPackageById(Long packageId) {
+            return packages.get(packageId);
+        }
+
+        @Override
+        public int updatePackageScanResult(Long packageId, Integer scanStatus, String scanReport, Long updatedBy) {
+            AppPackageEntity packageInfo = packages.get(packageId);
+            if (packageInfo == null) {
+                return 0;
+            }
+            packageInfo.setScanStatus(scanStatus);
+            packageInfo.setScanReport(scanReport);
+            packageInfo.setUpdatedBy(updatedBy);
+            return 1;
         }
 
         @Override

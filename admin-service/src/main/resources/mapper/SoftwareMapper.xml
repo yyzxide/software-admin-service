@@ -316,6 +316,28 @@
         ORDER BY created_at DESC, id DESC
     </select>
 
+    <select id="selectPackageById" resultMap="AppPackageResultMap">
+        SELECT id, app_id, version_id, os_type, arch, package_format, file_name,
+               file_size, storage_path, cdn_url, sha256, signature_algorithm,
+               signature_value, signature_status, signature_verified_at, status,
+               download_count, scan_status, scan_report, created_at, updated_at,
+               created_by, updated_by
+        FROM app_packages
+        WHERE id = #{packageId}
+          AND deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <update id="updatePackageScanResult">
+        UPDATE app_packages
+        SET scan_status = #{scanStatus},
+            scan_report = #{scanReport},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{packageId}
+          AND deleted_at IS NULL
+    </update>
+
     <update id="updateStatus">
         UPDATE apps
         SET status = #{status},

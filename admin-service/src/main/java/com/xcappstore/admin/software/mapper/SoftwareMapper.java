@@ -55,6 +55,15 @@ public interface SoftwareMapper {
 
     List<AppPackageEntity> selectPackagesByAppId(@Param("appId") Long appId);
 
+    AppPackageEntity selectPackageById(@Param("packageId") Long packageId);
+
+    int updatePackageScanResult(
+        @Param("packageId") Long packageId,
+        @Param("scanStatus") Integer scanStatus,
+        @Param("scanReport") String scanReport,
+        @Param("updatedBy") Long updatedBy
+    );
+
     int updateStatus(
         @Param("id") Long id,
         @Param("status") Integer status,

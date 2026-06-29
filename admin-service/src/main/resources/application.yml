@@ -56,6 +56,7 @@ admin:
     user-id: ${ADMIN_SECURITY_USER_ID:1}
     username: ${ADMIN_SECURITY_USERNAME:admin}
     password: ${ADMIN_SECURITY_PASSWORD:admin123456}
+    password-hash: ${ADMIN_SECURITY_PASSWORD_HASH:}
     password-sha256: ${ADMIN_SECURITY_PASSWORD_SHA256:}
     token-secret: ${ADMIN_SECURITY_TOKEN_SECRET:change-me-local-development-secret}
     ttl-seconds: ${ADMIN_SECURITY_TTL_SECONDS:7200}

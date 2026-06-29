@@ -153,6 +153,8 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps \
   -F uploadSessionId=<upload_id>
 ```
 
+说明：`publishNow=false` 仅为兼容旧参数；如果传 `publishNow=true`，服务端会拒绝请求，软件和新版本必须先提交审核。
+
 编辑元数据：
 
 ```bash
@@ -172,7 +174,7 @@ curl -s -X PUT http://127.0.0.1:8090/api/v1/admin/software/apps/1 \
   }'
 ```
 
-直接上架/下架：
+上架/下架：
 
 ```bash
 curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/publish \
@@ -209,6 +211,20 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/versions/2/pa
   -F packageFormat=deb \
   -F packageFile=@./sample-2.0.0-arm.deb
 ```
+
+本地模拟扫描安装包：
+
+```bash
+curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/packages/1/scan \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "result": "safe",
+    "report": "本地模拟扫描通过"
+  }'
+```
+
+`result` 支持 `safe`、`risky`、`failed`。审核通过和上架前只允许 `safe`。
 
 查询版本和安装包：
 

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class PackageSecurityPolicyService {
     private static final int SIGNATURE_FAILED = 2;
-    private static final int SCAN_RISKY = 2;
+    private static final int SCAN_SAFE = 1;
 
     private final SoftwareMapper softwareMapper;
 
@@ -38,10 +38,10 @@ public class PackageSecurityPolicyService {
                     "安装包签名校验失败，不能上架: " + packageInfo.getFileName()
                 );
             }
-            if (Integer.valueOf(SCAN_RISKY).equals(packageInfo.getScanStatus())) {
+            if (!Integer.valueOf(SCAN_SAFE).equals(packageInfo.getScanStatus())) {
                 throw new BusinessException(
                     ErrorCode.INVALID_STATUS_FLOW,
-                    "安装包安全扫描有风险，不能上架: " + packageInfo.getFileName()
+                    "安装包未通过安全扫描，不能上架: " + packageInfo.getFileName()
                 );
             }
         }

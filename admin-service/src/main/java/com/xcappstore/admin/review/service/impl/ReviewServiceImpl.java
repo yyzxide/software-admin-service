@@ -120,7 +120,8 @@ public class ReviewServiceImpl implements ReviewService {
         ensureDecidable(task);
         Long operatorId = normalizeAdminUserId(adminUserId);
         LocalDateTime now = LocalDateTime.now();
-        reviewMapper.assign(id, request.getReviewerId(), TASK_REVIEWING, now);
+        int affected = reviewMapper.assign(id, request.getReviewerId(), TASK_REVIEWING, now);
+        ensureUpdated(affected);
         insertHistory(id, "assign", task.getStatus(), TASK_REVIEWING, operatorId, "分配审核人: " + request.getReviewerId(), now);
         operationLogService.record(operatorId, "assign_review", "review_task", id, task.getTitle(), "分配审核任务: " + task.getTitle());
         return detail(id);
@@ -139,7 +140,8 @@ public class ReviewServiceImpl implements ReviewService {
         }
         LocalDateTime now = LocalDateTime.now();
         String comment = defaultText(normalizeText(request == null ? null : request.getComment()), "审核通过");
-        reviewMapper.finish(id, TASK_APPROVED, comment, operatorId, now, now);
+        int affected = reviewMapper.finish(id, TASK_APPROVED, comment, operatorId, now, now);
+        ensureUpdated(affected);
         insertHistory(id, "approve", task.getStatus(), TASK_APPROVED, operatorId, comment, now);
         if (task.getVersionId() != null) {
             softwareMapper.markVersionsNotLatest(task.getAppId(), operatorId);
@@ -160,7 +162,8 @@ public class ReviewServiceImpl implements ReviewService {
         Long operatorId = normalizeAdminUserId(adminUserId);
         LocalDateTime now = LocalDateTime.now();
         String comment = defaultText(normalizeText(request == null ? null : request.getComment()), "审核驳回");
-        reviewMapper.finish(id, TASK_REJECTED, comment, operatorId, now, now);
+        int affected = reviewMapper.finish(id, TASK_REJECTED, comment, operatorId, now, now);
+        ensureUpdated(affected);
         insertHistory(id, "reject", task.getStatus(), TASK_REJECTED, operatorId, comment, now);
         softwareMapper.rejectAppReview(task.getAppId(), now, operatorId);
         if (task.getVersionId() != null) {
@@ -208,6 +211,12 @@ public class ReviewServiceImpl implements ReviewService {
     private void ensureDecidable(ReviewTaskEntity task) {
         if (!DECIDABLE_STATUSES.contains(task.getStatus())) {
             throw new BusinessException(ErrorCode.REVIEW_INVALID_STATUS, "当前审核任务状态不允许操作");
+        }
+    }
+
+    private void ensureUpdated(int affected) {
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.REVIEW_INVALID_STATUS, "审核任务已被其他人处理");
         }
     }
 

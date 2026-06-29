@@ -220,16 +220,15 @@ uploadSessionId=<upload_id>
 
 ## 病毒扫描设计
 
-病毒扫描当前先不接入具体引擎，原因是它会引入 ClamAV、商业扫描服务或异步沙箱，部署成本较高。
+病毒扫描当前先不接入具体引擎，原因是它会引入 ClamAV、商业扫描服务或异步沙箱，部署成本较高。项目提供本地模拟扫描接口，用于把安全状态流接入审核和上架路径。
 
 推荐演进方案：
 
 1. 安装包合并并完成签名校验后，先写入 `scan_status=0`。
-2. 后端发送扫描任务到消息队列或任务表。
-3. 扫描服务读取 `storage_path`，调用扫描引擎。
-4. 扫描通过后更新 `scan_status=1`。
-5. 扫描失败或命中风险后更新 `scan_status=2`，写入 `scan_report`。
-6. 上架或审核通过时检查 `signature_status` 和 `scan_status`。
+2. 本地演示环境调用模拟扫描接口，更新 `scan_status` 和 `scan_report`。
+3. 扫描通过后更新 `scan_status=1`。
+4. 命中风险后更新 `scan_status=2`，扫描失败后更新 `scan_status=3`。
+5. 上架或审核通过时检查 `signature_status` 和 `scan_status`。
 
 这样主链路不被慢扫描阻塞，也便于替换不同扫描服务。
 

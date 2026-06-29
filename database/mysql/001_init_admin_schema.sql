@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS categories (
   created_at   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at   DATETIME(3) DEFAULT NULL,
-  UNIQUE KEY uk_category_name_alive (name, deleted_at),
+  alive_name   VARCHAR(50) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN name ELSE NULL END) STORED,
+  UNIQUE KEY uk_category_alive_name (alive_name),
   KEY idx_parent_id (parent_id),
   KEY idx_status (status),
   KEY idx_deleted_at (deleted_at)
@@ -39,8 +40,10 @@ CREATE TABLE IF NOT EXISTS admin_users (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   username      VARCHAR(64) NOT NULL COMMENT '管理员账号',
   display_name  VARCHAR(128) NOT NULL DEFAULT '' COMMENT '显示名称',
-  password_sha256 VARCHAR(64) NOT NULL DEFAULT 'ac0e7d037817094e9e0b4441f9bae3209d67b02fa484917065f71b16109a1a78' COMMENT '登录密码SHA256',
+  password_hash VARCHAR(128) NOT NULL DEFAULT '{sha256}ac0e7d037817094e9e0b4441f9bae3209d67b02fa484917065f71b16109a1a78' COMMENT '登录密码哈希',
+  password_sha256 VARCHAR(64) DEFAULT NULL COMMENT '历史SHA256密码哈希，仅用于兼容迁移',
   status        TINYINT NOT NULL DEFAULT 1 COMMENT '1=启用 0=禁用',
+  token_version BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Token会话版本，变更后旧Token失效',
   created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   UNIQUE KEY uk_admin_username (username),
@@ -161,7 +164,7 @@ CREATE TABLE IF NOT EXISTS app_packages (
   signature_verified_at DATETIME(3) DEFAULT NULL COMMENT '签名校验时间',
   status          TINYINT NOT NULL DEFAULT 1 COMMENT '0=上传中 1=可用 2=已删除',
   download_count  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '下载量',
-  scan_status     TINYINT NOT NULL DEFAULT 0 COMMENT '0=未扫描 1=安全 2=有风险',
+  scan_status     TINYINT NOT NULL DEFAULT 0 COMMENT '0=未扫描 1=安全 2=有风险 3=扫描失败',
   scan_report     TEXT DEFAULT NULL COMMENT '扫描报告',
   created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -293,10 +296,11 @@ INSERT IGNORE INTO admin_permissions (permission_code, permission_name, module, 
 ('software:view', '查看软件', 'software', '查看软件列表、详情、版本和安装包'),
 ('software:create', '上传软件', 'software', '创建软件和初始版本'),
 ('software:update', '编辑软件', 'software', '编辑软件元数据'),
-('software:publish', '上架软件', 'software', '直接上架软件'),
+('software:publish', '上架软件', 'software', '上架已通过审核的软件'),
 ('software:unpublish', '下架软件', 'software', '直接下架软件'),
 ('software:version:create', '新增版本', 'software', '为软件新增版本'),
 ('software:package:create', '追加安装包', 'software', '为版本追加安装包变体'),
+('software:package:scan', '模拟扫描安装包', 'software', '更新安装包本地模拟扫描结果'),
 ('software:upload', '分片上传', 'software', '创建和管理安装包上传会话'),
 ('review:view', '查看审核', 'review', '查看审核任务和历史'),
 ('review:submit', '提交审核', 'review', '提交软件或版本审核'),
@@ -325,7 +329,7 @@ SELECT r.id, p.id
 FROM admin_roles r
 INNER JOIN admin_permissions p ON p.permission_code IN (
   'software:view', 'software:create', 'software:update', 'software:version:create',
-  'software:package:create', 'software:upload', 'review:view', 'review:submit',
+  'software:package:create', 'software:package:scan', 'software:upload', 'review:view', 'review:submit',
   'category:view', 'category:manage', 'tag:view', 'tag:manage', 'rbac:view'
 )
 WHERE r.role_code = 'operator';

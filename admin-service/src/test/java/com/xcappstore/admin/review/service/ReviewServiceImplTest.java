@@ -105,6 +105,41 @@ class ReviewServiceImplTest {
         assertEquals(ErrorCode.REVIEW_INVALID_STATUS, ex.getCode());
     }
 
+    @Test
+    void rejectsConcurrentReviewDecisionWhenConditionalUpdateAffectsNoRows() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
+        reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
+        reviewMapper.finishAffectedRows = 0;
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> reviewService.approve(1L, new ReviewDecisionRequest(), 88L));
+
+        assertEquals(ErrorCode.REVIEW_INVALID_STATUS, ex.getCode());
+        assertEquals("审核任务已被其他人处理", ex.getMessage());
+        assertEquals(0, reviewMapper.histories.size());
+        assertEquals(1, softwareMapper.apps.get(1L).getStatus());
+    }
+
+    @Test
+    void rejectsApproveWhenPackageNotScanned() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(10L);
+        packageInfo.setAppId(1L);
+        packageInfo.setVersionId(1L);
+        packageInfo.setFileName("unscanned.deb");
+        packageInfo.setScanStatus(0);
+        softwareMapper.packages.put(10L, packageInfo);
+        reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
+
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> reviewService.approve(1L, new ReviewDecisionRequest(), 88L)
+        );
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("安装包未通过安全扫描，不能上架: unscanned.deb", ex.getMessage());
+    }
+
     private SoftwareEntity app(Long id, String name, Integer status) {
         SoftwareEntity app = new SoftwareEntity();
         app.setId(id);
@@ -133,6 +168,7 @@ class ReviewServiceImplTest {
         private final List<ReviewHistoryEntity> histories = new ArrayList<>();
         private long nextTaskId = 1L;
         private long nextHistoryId = 1L;
+        private int finishAffectedRows = 1;
 
         @Override public int insertTask(ReviewTaskEntity task) { task.setId(nextTaskId++); tasks.put(task.getId(), task); return 1; }
         @Override public int insertHistory(ReviewHistoryEntity history) { history.setId(nextHistoryId++); histories.add(history); return 1; }
@@ -141,8 +177,8 @@ class ReviewServiceImplTest {
         @Override public List<ReviewTaskEntity> selectPage(com.xcappstore.admin.review.dto.ReviewTaskQueryRequest query, int offset, int limit) { return tasks.values().stream().toList(); }
         @Override public ReviewTaskEntity selectById(Long id) { return tasks.get(id); }
         @Override public List<ReviewHistoryEntity> selectHistories(Long taskId) { return histories.stream().filter(h -> taskId.equals(h.getTaskId())).toList(); }
-        @Override public int assign(Long id, Long reviewerId, Integer status, LocalDateTime updatedAt) { ReviewTaskEntity task = tasks.get(id); task.setReviewerId(reviewerId); task.setStatus(status); task.setUpdatedAt(updatedAt); return 1; }
-        @Override public int finish(Long id, Integer status, String reviewComment, Long reviewerId, LocalDateTime reviewedAt, LocalDateTime updatedAt) { ReviewTaskEntity task = tasks.get(id); task.setStatus(status); task.setReviewComment(reviewComment); task.setReviewerId(reviewerId); task.setReviewedAt(reviewedAt); task.setUpdatedAt(updatedAt); return 1; }
+        @Override public int assign(Long id, Long reviewerId, Integer status, LocalDateTime updatedAt) { ReviewTaskEntity task = tasks.get(id); if (task.getStatus() != 0 && task.getStatus() != 1) { return 0; } task.setReviewerId(reviewerId); task.setStatus(status); task.setUpdatedAt(updatedAt); return 1; }
+        @Override public int finish(Long id, Integer status, String reviewComment, Long reviewerId, LocalDateTime reviewedAt, LocalDateTime updatedAt) { if (finishAffectedRows == 0) { return 0; } ReviewTaskEntity task = tasks.get(id); if (task.getStatus() != 0 && task.getStatus() != 1) { return 0; } task.setStatus(status); task.setReviewComment(reviewComment); task.setReviewerId(reviewerId); task.setReviewedAt(reviewedAt); task.setUpdatedAt(updatedAt); return 1; }
     }
 
     private static final class FakeSoftwareMapper implements SoftwareMapper {
@@ -169,6 +205,8 @@ class ReviewServiceImplTest {
         @Override public AppVersionEntity selectVersionById(Long versionId) { return versions.get(versionId); }
         @Override public List<AppVersionEntity> selectVersionsByAppId(Long appId) { return List.of(); }
         @Override public List<AppPackageEntity> selectPackagesByAppId(Long appId) { return packages.values().stream().filter(packageInfo -> appId.equals(packageInfo.getAppId())).toList(); }
+        @Override public AppPackageEntity selectPackageById(Long packageId) { return packages.get(packageId); }
+        @Override public int updatePackageScanResult(Long packageId, Integer scanStatus, String scanReport, Long updatedBy) { return 1; }
         @Override public int updateStatus(Long id, Integer status, LocalDateTime publishedAt, Long updatedBy) { SoftwareEntity app = apps.get(id); app.setStatus(status); app.setPublishedAt(publishedAt); app.setUpdatedBy(updatedBy); return 1; }
         @Override public int approveDraftVersions(Long appId, LocalDateTime reviewedAt, LocalDateTime publishedAt, Long updatedBy) { approvedDraftVersions++; return 1; }
         @Override public int updateAppReviewing(Long id, Long updatedBy) { apps.get(id).setStatus(1); return 1; }

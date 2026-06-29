@@ -6,8 +6,10 @@ public class AdminUserEntity {
     private Long id;
     private String username;
     private String displayName;
+    private String passwordHash;
     private String passwordSha256;
     private Integer status;
+    private Long tokenVersion;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -43,12 +45,28 @@ public class AdminUserEntity {
         this.passwordSha256 = passwordSha256;
     }
 
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public Integer getStatus() {
         return status;
     }
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public Long getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void setTokenVersion(Long tokenVersion) {
+        this.tokenVersion = tokenVersion;
     }
 
     public LocalDateTime getCreatedAt() {

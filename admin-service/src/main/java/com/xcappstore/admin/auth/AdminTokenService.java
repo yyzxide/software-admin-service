@@ -8,11 +8,9 @@ import com.xcappstore.admin.auth.rbac.AdminUserEntity;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.exception.BusinessException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
-import java.util.Locale;
+import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,28 +26,36 @@ public class AdminTokenService {
     private final Long adminUserId;
     private final String adminUsername;
     private final String adminPassword;
+    private final String adminPasswordHash;
     private final String adminPasswordSha256;
     private final String tokenSecret;
     private final long ttlSeconds;
     private final AdminRbacMapper rbacMapper;
+    private final PasswordHashService passwordHashService;
 
     @Autowired
     public AdminTokenService(
         AdminRbacMapper rbacMapper,
+        PasswordHashService passwordHashService,
         @Value("${admin.security.user-id:1}") Long adminUserId,
         @Value("${admin.security.username:admin}") String adminUsername,
         @Value("${admin.security.password:admin123456}") String adminPassword,
+        @Value("${admin.security.password-hash:}") String adminPasswordHash,
         @Value("${admin.security.password-sha256:}") String adminPasswordSha256,
         @Value("${admin.security.token-secret:change-me-local-development-secret}") String tokenSecret,
-        @Value("${admin.security.ttl-seconds:7200}") long ttlSeconds
+        @Value("${admin.security.ttl-seconds:7200}") long ttlSeconds,
+        @Value("${spring.profiles.active:}") String activeProfiles
     ) {
         this.rbacMapper = rbacMapper;
+        this.passwordHashService = passwordHashService;
         this.adminUserId = adminUserId;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
+        this.adminPasswordHash = adminPasswordHash;
         this.adminPasswordSha256 = adminPasswordSha256;
         this.tokenSecret = tokenSecret;
         this.ttlSeconds = ttlSeconds;
+        rejectDefaultSecretOutsideLocalProfile(activeProfiles);
     }
 
     public AdminTokenService(
@@ -60,7 +66,7 @@ public class AdminTokenService {
         String tokenSecret,
         long ttlSeconds
     ) {
-        this(null, adminUserId, adminUsername, adminPassword, adminPasswordSha256, tokenSecret, ttlSeconds);
+        this(null, new PasswordHashService(), adminUserId, adminUsername, adminPassword, "", adminPasswordSha256, tokenSecret, ttlSeconds, "test");
     }
 
     public LoginResponse login(LoginRequest request) {
@@ -75,28 +81,38 @@ public class AdminTokenService {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
         }
 
-        long expiresAt = Instant.now().getEpochSecond() + ttlSeconds;
-        String payload = String.join("|", adminUserId.toString(), adminUsername, USER_TYPE_ADMIN, Long.toString(expiresAt));
-        String accessToken = encode(payload) + "." + sign(payload);
-        return new LoginResponse(accessToken, "Bearer", ttlSeconds, expiresAt, toUser(new AdminPrincipal(
-            adminUserId,
-            adminUsername,
-            USER_TYPE_ADMIN,
-            expiresAt
-        )));
+        return issueToken(adminUserId, adminUsername, USER_TYPE_ADMIN, 0L);
     }
 
     private LoginResponse loginDbUser(AdminUserEntity user, String rawPassword) {
-        if (!Integer.valueOf(1).equals(user.getStatus()) || !passwordHashMatches(rawPassword, user.getPasswordSha256())) {
+        if (!Integer.valueOf(1).equals(user.getStatus())
+            || !passwordHashService.matches(rawPassword, user.getPasswordHash(), user.getPasswordSha256())) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
         }
+        long tokenVersion = normalizeTokenVersion(user.getTokenVersion());
+        if (passwordHashService.needsUpgrade(user.getPasswordHash()) && rbacMapper != null) {
+            rbacMapper.updateUserPassword(user.getId(), passwordHashService.hash(rawPassword));
+            tokenVersion++;
+        }
+        return issueToken(user.getId(), user.getUsername(), USER_TYPE_ADMIN, tokenVersion);
+    }
+
+    private LoginResponse issueToken(Long userId, String username, String userType, Long tokenVersion) {
         long expiresAt = Instant.now().getEpochSecond() + ttlSeconds;
-        String payload = String.join("|", user.getId().toString(), user.getUsername(), USER_TYPE_ADMIN, Long.toString(expiresAt));
+        String payload = String.join(
+            "|",
+            userId.toString(),
+            username,
+            userType,
+            Long.toString(expiresAt),
+            Long.toString(normalizeTokenVersion(tokenVersion)),
+            UUID.randomUUID().toString()
+        );
         String accessToken = encode(payload) + "." + sign(payload);
         return new LoginResponse(accessToken, "Bearer", ttlSeconds, expiresAt, toUser(new AdminPrincipal(
-            user.getId(),
-            user.getUsername(),
-            USER_TYPE_ADMIN,
+            userId,
+            username,
+            userType,
             expiresAt
         )));
     }
@@ -117,16 +133,24 @@ public class AdminTokenService {
         }
 
         String[] fields = payload.split("\\|", -1);
-        if (fields.length != 4) {
+        if (fields.length != 4 && fields.length != 6) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
         }
 
-        long expiresAt = Long.parseLong(fields[3]);
-        if (Instant.now().getEpochSecond() > expiresAt) {
+        try {
+            long userId = Long.parseLong(fields[0]);
+            String username = fields[1];
+            String userType = fields[2];
+            long expiresAt = Long.parseLong(fields[3]);
+            long tokenVersion = fields.length == 6 ? Long.parseLong(fields[4]) : 0L;
+            if (Instant.now().getEpochSecond() > expiresAt) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+            }
+            verifyDbPrincipal(userId, username, userType, tokenVersion, fields.length == 6);
+            return new AdminPrincipal(userId, username, userType, expiresAt);
+        } catch (NumberFormatException ex) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
         }
-
-        return new AdminPrincipal(Long.parseLong(fields[0]), fields[1], fields[2], expiresAt);
     }
 
     public AdminUserResponse toUser(AdminPrincipal principal) {
@@ -135,27 +159,37 @@ public class AdminTokenService {
 
     private boolean passwordMatches(String rawPassword) {
         String password = rawPassword == null ? "" : rawPassword;
-        if (StringUtils.hasText(adminPasswordSha256)) {
-            String expected = adminPasswordSha256.trim().toLowerCase(Locale.ROOT);
-            return MessageDigest.isEqual(sha256Hex(password).getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+        if (StringUtils.hasText(adminPasswordHash) || StringUtils.hasText(adminPasswordSha256)) {
+            return passwordHashService.matches(password, adminPasswordHash, adminPasswordSha256);
         }
         return adminPassword.equals(password);
     }
 
-    private boolean passwordHashMatches(String rawPassword, String expectedSha256) {
-        if (!StringUtils.hasText(expectedSha256)) {
-            return false;
+    private void verifyDbPrincipal(Long userId, String username, String userType, long tokenVersion, boolean versionedToken) {
+        if (rbacMapper == null || !USER_TYPE_ADMIN.equals(userType)) {
+            return;
         }
-        String expected = expectedSha256.trim().toLowerCase(Locale.ROOT);
-        return MessageDigest.isEqual(sha256Hex(rawPassword == null ? "" : rawPassword).getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+        AdminUserEntity user = rbacMapper.selectUserById(userId);
+        if (user == null || !Integer.valueOf(1).equals(user.getStatus()) || !username.equals(user.getUsername())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+        }
+        long currentVersion = normalizeTokenVersion(user.getTokenVersion());
+        if ((versionedToken && tokenVersion != currentVersion) || (!versionedToken && currentVersion > 0)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录已过期");
+        }
     }
 
-    private String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "密码校验失败");
+    private long normalizeTokenVersion(Long tokenVersion) {
+        return tokenVersion == null || tokenVersion < 0 ? 0L : tokenVersion;
+    }
+
+    private void rejectDefaultSecretOutsideLocalProfile(String activeProfiles) {
+        if (!"change-me-local-development-secret".equals(tokenSecret)) {
+            return;
+        }
+        String profiles = activeProfiles == null ? "" : activeProfiles.toLowerCase();
+        if (profiles.contains("prod") || profiles.contains("stage") || profiles.contains("release")) {
+            throw new IllegalStateException("非本地环境必须配置 ADMIN_SECURITY_TOKEN_SECRET");
         }
     }
 

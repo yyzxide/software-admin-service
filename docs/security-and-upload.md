@@ -10,34 +10,29 @@
 
 当前能力：
 
-- Token payload 包含用户 ID、用户名、用户类型和过期时间。
+- Token payload 包含用户 ID、用户名、用户类型、过期时间、会话版本和 `jti`。
 - Token 使用 `HmacSHA256` 签名。
 - 后台业务接口统一经过 `AdminAuthInterceptor` 校验。
+- 每次鉴权会重新确认数据库账号状态，账号禁用、密码重置或会话版本变化后旧 Token 会失效。
 - 核心接口通过 `@RequirePermission` 声明 RBAC 权限点。
 - 初始化 SQL 提供 `super_admin`、`operator`、`reviewer`、`viewer` 四类角色。
 - 默认 `admin` 账号绑定 `super_admin`，拥有 `*` 全部权限。
-- `admin_users.password_sha256` 是管理员登录的优先来源。
+- `admin_users.password_hash` 是管理员登录的优先来源，新建和重置密码使用 BCrypt。
+- 历史 `password_sha256` 只作为兼容字段，旧账号登录成功后会自动升级为 BCrypt 哈希。
 - 权限管理页面支持新增管理员、重置密码、启停账号、分配角色、新增角色和分配权限点。
-- 如果数据库账号不存在，会回退到 `ADMIN_SECURITY_USERNAME`、`ADMIN_SECURITY_PASSWORD`、`ADMIN_SECURITY_PASSWORD_SHA256`。
+- 如果数据库账号不存在，会回退到 `ADMIN_SECURITY_USERNAME`、`ADMIN_SECURITY_PASSWORD`、`ADMIN_SECURITY_PASSWORD_HASH` 或 `ADMIN_SECURITY_PASSWORD_SHA256`。
 
 示例：
 
 ```bash
-printf admin123456 | sha256sum
-```
-
-然后启动：
-
-```bash
-ADMIN_SECURITY_PASSWORD= \
-ADMIN_SECURITY_PASSWORD_SHA256=<sha256-password> \
 ADMIN_SECURITY_TOKEN_SECRET=<long-random-secret> \
 make run
 ```
 
+如果需要给本地兜底账号配置哈希密码，优先使用 `ADMIN_SECURITY_PASSWORD_HASH`；旧的 `ADMIN_SECURITY_PASSWORD_SHA256` 只用于兼容演示环境。
+
 后续生产增强：
 
-- 改成 BCrypt / Argon2 等带盐慢哈希。
 - 增加登录失败次数限制和验证码。
 - 增加菜单级权限和按钮级权限隐藏。
 - Token secret 由配置中心或密钥管理系统托管。
@@ -191,10 +186,12 @@ docs/upload-resume-and-signature.md
 
 ## 发布前安全状态拦截
 
-当前不强制要求所有安装包都完成病毒扫描，因为本项目暂未接真实扫描引擎。但以下状态会阻断审核通过或直接上架：
+本项目暂未接真实扫描引擎，但发布策略已经按安全分发收紧：只有 `scan_status=1` 的安装包允许审核通过或上架，其他状态都会阻断。
 
 - `signature_status=2`：签名校验失败。
+- `scan_status=0`：未扫描。
 - `scan_status=2`：安全扫描有风险。
+- `scan_status=3`：扫描失败。
 
 这样可以先把安全状态流接入业务发布路径。后续接入扫描服务后，只需要让扫描服务更新 `scan_status` 和 `scan_report`，审核和上架拦截无需重写。
 
@@ -224,17 +221,21 @@ if (totalSize > maxBatchBytes) {
 
 ## 病毒扫描设计
 
-病毒扫描暂时不接入具体引擎，但表结构已经有 `scan_status` 和 `scan_report`，后续可以按异步任务扩展。
+病毒扫描暂时不接入具体引擎，但已经提供本地模拟扫描接口，并保留 `scan_status` 和 `scan_report` 作为后续异步扫描服务的落点。
 
-推荐流程：
+当前本地流程：
 
 1. 安装包上传完成并通过 SHA256 / 签名校验。
 2. 写入 `scan_status=0`，表示待扫描。
-3. 后台任务或消息队列触发扫描服务。
-4. 扫描服务读取 `storage_path`，调用 ClamAV、商业安全网关或内部沙箱。
-5. 扫描通过后写入 `scan_status=1`。
-6. 扫描失败或命中风险后写入 `scan_status=2` 和 `scan_report`。
-7. 审核通过或上架前检查扫描状态。
+3. 管理员调用本地模拟扫描接口，写入 `scan_status=1/2/3` 和 `scan_report`。
+4. 审核通过或上架前检查扫描状态，只有 `scan_status=1` 允许继续。
+
+后续生产演进：
+
+1. 后端发送扫描任务到消息队列或任务表。
+2. 扫描服务读取 `storage_path`，调用 ClamAV、商业安全网关或内部沙箱。
+3. 扫描通过后写入 `scan_status=1`。
+4. 扫描失败写入 `scan_status=3`，命中风险写入 `scan_status=2`，同时保存 `scan_report`。
 
 这样不会让大文件上传请求长时间阻塞，也方便后续替换扫描引擎。
 

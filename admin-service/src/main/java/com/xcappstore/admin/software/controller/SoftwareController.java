@@ -8,6 +8,7 @@ import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
+import com.xcappstore.admin.software.dto.PackageScanRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
 import com.xcappstore.admin.software.dto.SoftwareStatusChangeRequest;
@@ -108,6 +109,17 @@ public class SoftwareController {
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(softwareService.addPackage(id, versionId, request, adminUserId(servletRequest)));
+    }
+
+    @PostMapping("/{id}/packages/{packageId}/scan")
+    @RequirePermission("software:package:scan")
+    public ApiResponse<AppPackageResponse> scanPackage(
+        @PathVariable Long id,
+        @PathVariable Long packageId,
+        @Valid @RequestBody(required = false) PackageScanRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        return ApiResponse.success(softwareService.scanPackage(id, packageId, request, adminUserId(servletRequest)));
     }
 
     @GetMapping("/{id}/versions")

@@ -20,7 +20,7 @@ public interface AdminRbacMapper {
 
     int updateUserStatus(@Param("id") Long id, @Param("status") Integer status);
 
-    int updateUserPassword(@Param("id") Long id, @Param("passwordSha256") String passwordSha256);
+    int updateUserPassword(@Param("id") Long id, @Param("passwordHash") String passwordHash);
 
     List<AdminRoleEntity> selectRoles(@Param("keyword") String keyword, @Param("status") Integer status);
 
