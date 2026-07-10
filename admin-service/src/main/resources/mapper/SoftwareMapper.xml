@@ -271,6 +271,7 @@
         WHERE version_id = #{versionId}
           AND os_type = #{osType}
           AND arch = #{arch}
+          AND package_format = #{packageFormat}
           AND deleted_at IS NULL
     </select>
 

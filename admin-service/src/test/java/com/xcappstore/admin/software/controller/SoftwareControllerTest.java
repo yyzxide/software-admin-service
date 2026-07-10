@@ -83,7 +83,7 @@ class SoftwareControllerTest {
                 .contentType("application/json")
                 .content("{\"result\":\" \"}"))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.message").value("扫描结果不能为空"));
+            .andExpect(jsonPath("$.message").value("安全状态结果不能为空"));
     }
 
     private LocalValidatorFactoryBean validator() {

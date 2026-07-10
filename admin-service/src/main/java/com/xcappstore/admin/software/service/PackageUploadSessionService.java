@@ -9,12 +9,15 @@ import com.xcappstore.admin.software.dto.PackageUploadCreateRequest;
 import com.xcappstore.admin.software.dto.PackageUploadSessionResponse;
 import com.xcappstore.admin.software.entity.PackageUploadSessionEntity;
 import com.xcappstore.admin.software.mapper.PackageUploadSessionMapper;
+import com.xcappstore.admin.software.model.SignatureStatus;
+import com.xcappstore.admin.software.model.UploadSessionStatus;
 import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationRequest;
 import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationResult;
 import com.xcappstore.admin.software.service.PackageFileStorageService.StoredPackage;
 import com.xcappstore.admin.software.service.PackageFileStorageService.VerifiedPackage;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -28,11 +31,6 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class PackageUploadSessionService {
-    private static final int STATUS_UPLOADING = 0;
-    private static final int STATUS_COMPLETED = 1;
-    private static final int STATUS_CONSUMED = 2;
-    private static final int STATUS_FAILED = 3;
-
     private final PackageUploadSessionMapper mapper;
     private final PackageFileStorageService storageService;
     private final ObjectMapper objectMapper;
@@ -79,8 +77,8 @@ public class PackageUploadSessionService {
         entity.setExpectedSha256(normalizeText(request.getExpectedSha256()));
         entity.setSignatureAlgorithm(normalizeText(request.getSignatureAlgorithm()));
         entity.setSignatureValue(normalizeText(request.getSignatureValue()));
-        entity.setSignatureStatus(0);
-        entity.setStatus(STATUS_UPLOADING);
+        entity.setSignatureStatus(SignatureStatus.NOT_VERIFIED.code());
+        entity.setStatus(UploadSessionStatus.UPLOADING.code());
         entity.setCreatedBy(normalizeAdminUserId(adminUserId));
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
@@ -106,27 +104,20 @@ public class PackageUploadSessionService {
         validateChunkSize(session, chunkIndex, chunkBytes);
 
         Path chunkPath = chunkPath(session.getUploadId(), chunkIndex);
-        try {
-            Files.createDirectories(chunkPath.getParent());
-            Files.copy(request.getChunkFile().getInputStream(), chunkPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (Exception ex) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "分片保存失败");
-        }
+        storeChunkFile(request, chunkPath);
 
         List<Integer> uploadedChunks = uploadedChunksFromDisk(session);
         int updatedRows = mapper.updateProgress(session.getUploadId(), toJson(uploadedChunks), uploadedChunks.size());
         if (updatedRows == 0) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话状态已变化");
         }
-        PackageUploadSessionEntity updatedSession = mapper.selectByUploadId(session.getUploadId());
-        return toResponse(updatedSession);
+        return toResponse(mapper.selectByUploadId(session.getUploadId()));
     }
 
     public PackageUploadSessionResponse status(String uploadId, Long adminUserId) {
         return toResponse(requireSession(uploadId, adminUserId));
     }
 
-    @Transactional
     public PackageUploadSessionResponse complete(String uploadId, Long adminUserId) {
         PackageUploadSessionEntity session = requireUploadingSession(uploadId, adminUserId);
         List<Integer> uploadedChunks = uploadedChunksFromDisk(session);
@@ -134,6 +125,11 @@ public class PackageUploadSessionService {
             mapper.updateProgress(session.getUploadId(), toJson(uploadedChunks), uploadedChunks.size());
             throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "分片尚未全部上传");
         }
+        if (mapper.markCompleting(session.getUploadId()) == 0) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话状态已变化");
+        }
+
+        StoredPackage storedPackage = null;
         Path mergedPath = chunkDir(session.getUploadId()).resolve("merged.package").normalize();
         try {
             mergeChunks(session, mergedPath);
@@ -147,7 +143,7 @@ public class PackageUploadSessionService {
                 session.getPackageFormat(),
                 verificationRequest(session)
             );
-            StoredPackage storedPackage = verifiedPackage.storedPackage();
+            storedPackage = verifiedPackage.storedPackage();
             PackageVerificationResult verificationResult = verifiedPackage.verificationResult();
             LocalDateTime completedAt = LocalDateTime.now();
             int updated = mapper.complete(
@@ -161,14 +157,17 @@ public class PackageUploadSessionService {
                 completedAt
             );
             if (updated == 0) {
+                storageService.deleteStoredPackageQuietly(storedPackage);
                 throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话状态已变化");
             }
             deleteChunkDir(session.getUploadId());
             return toResponse(mapper.selectByUploadId(session.getUploadId()));
         } catch (BusinessException ex) {
+            storageService.deleteStoredPackageQuietly(storedPackage);
             mapper.markFailed(session.getUploadId(), ex.getMessage());
             throw ex;
         } catch (Exception ex) {
+            storageService.deleteStoredPackageQuietly(storedPackage);
             mapper.markFailed(session.getUploadId(), "分片合并失败");
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "分片合并失败");
         }
@@ -180,10 +179,11 @@ public class PackageUploadSessionService {
             throw new BusinessException(ErrorCode.PARAM_FORMAT, "上传会话ID不能为空");
         }
         PackageUploadSessionEntity session = requireSession(uploadId, adminUserId);
-        if (STATUS_CONSUMED == safeStatus(session)) {
+        UploadSessionStatus status = UploadSessionStatus.fromCode(session.getStatus());
+        if (status == UploadSessionStatus.CONSUMED) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话已被使用");
         }
-        if (STATUS_COMPLETED != safeStatus(session)) {
+        if (status != UploadSessionStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话尚未完成");
         }
         String normalizedFormat = normalizePackageFormat(packageFormat);
@@ -256,9 +256,9 @@ public class PackageUploadSessionService {
         response.setStoragePath(entity.getStoragePath());
         response.setSignatureAlgorithm(entity.getSignatureAlgorithm());
         response.setSignatureStatus(entity.getSignatureStatus());
-        response.setSignatureStatusText(signatureStatusText(entity.getSignatureStatus()));
+        response.setSignatureStatusText(SignatureStatus.fromCode(entity.getSignatureStatus()).text());
         response.setStatus(entity.getStatus());
-        response.setStatusText(statusText(entity.getStatus()));
+        response.setStatusText(UploadSessionStatus.fromCode(entity.getStatus()).text());
         response.setErrorMessage(entity.getErrorMessage());
         response.setCreatedAt(entity.getCreatedAt());
         response.setUpdatedAt(entity.getUpdatedAt());
@@ -268,14 +268,10 @@ public class PackageUploadSessionService {
 
     private PackageUploadSessionEntity requireUploadingSession(String uploadId, Long adminUserId) {
         PackageUploadSessionEntity session = requireSession(uploadId, adminUserId);
-        if (STATUS_UPLOADING != safeStatus(session)) {
+        if (!UploadSessionStatus.fromCode(session.getStatus()).isUploading()) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话不在上传中状态");
         }
         return session;
-    }
-
-    private int safeStatus(PackageUploadSessionEntity session) {
-        return session.getStatus() == null ? STATUS_FAILED : session.getStatus();
     }
 
     private int safeTotalChunks(long fileSize, long chunkSize) {
@@ -300,6 +296,32 @@ public class PackageUploadSessionService {
             if (chunkBytes != expectedLastSize) {
                 throw new BusinessException(ErrorCode.PARAM_FORMAT, "最后分片大小与预期不一致");
             }
+        }
+    }
+
+    private void storeChunkFile(PackageUploadChunkRequest request, Path chunkPath) {
+        try {
+            Files.createDirectories(chunkPath.getParent());
+            if (Files.isRegularFile(chunkPath) && Files.size(chunkPath) == request.getChunkFile().getSize()) {
+                return;
+            }
+            Path tempPath = chunkPath.resolveSibling(chunkPath.getFileName() + "." + UUID.randomUUID() + ".tmp");
+            try {
+                try (InputStream input = request.getChunkFile().getInputStream()) {
+                    Files.copy(input, tempPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+                try {
+                    Files.move(tempPath, chunkPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException ex) {
+                    Files.move(tempPath, chunkPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(tempPath);
+            }
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "分片保存失败");
         }
     }
 
@@ -408,24 +430,5 @@ public class PackageUploadSessionService {
     private String normalizePackageFormat(String value) {
         String text = normalizeText(value);
         return text == null ? null : text.toLowerCase();
-    }
-
-    private String statusText(Integer status) {
-        return switch (status == null ? STATUS_FAILED : status) {
-            case STATUS_UPLOADING -> "上传中";
-            case STATUS_COMPLETED -> "已完成";
-            case STATUS_CONSUMED -> "已使用";
-            case STATUS_FAILED -> "失败";
-            default -> "未知";
-        };
-    }
-
-    private String signatureStatusText(Integer status) {
-        return switch (status == null ? 0 : status) {
-            case 0 -> "未校验";
-            case 1 -> "通过";
-            case 2 -> "失败";
-            default -> "未知";
-        };
     }
 }

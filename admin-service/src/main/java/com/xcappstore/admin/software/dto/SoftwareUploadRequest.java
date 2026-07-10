@@ -2,12 +2,15 @@ package com.xcappstore.admin.software.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.web.multipart.MultipartFile;
 
 public class SoftwareUploadRequest {
     @NotBlank(message = "软件标识不能为空")
     @Size(max = 128, message = "软件标识不能超过128个字符")
+    @Pattern(regexp = "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", message = "软件标识只能包含字母、数字、点、下划线和短横线")
     private String appKey;
 
     @NotBlank(message = "软件名称不能为空")
@@ -40,6 +43,7 @@ public class SoftwareUploadRequest {
     @Size(max = 64, message = "版本名称不能超过64个字符")
     private String versionName;
 
+    @Positive(message = "版本号必须大于0")
     private Long versionCode;
     private String supportedOsTypes;
     private String supportedArchs;
@@ -47,6 +51,7 @@ public class SoftwareUploadRequest {
     private String tagIds;
     private Boolean publishNow;
     private String uploadSessionId;
+    @Pattern(regexp = "^$|^[0-9a-fA-F]{64}$", message = "SHA256格式错误")
     private String expectedSha256;
     private String signatureAlgorithm;
     private String signatureValue;

@@ -8,6 +8,11 @@ import com.xcappstore.admin.software.dto.SoftwareResponse;
 import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
+import com.xcappstore.admin.software.model.AppVersionStatus;
+import com.xcappstore.admin.software.model.PackageScanStatus;
+import com.xcappstore.admin.software.model.PackageStatus;
+import com.xcappstore.admin.software.model.SignatureStatus;
+import com.xcappstore.admin.software.model.SoftwareStatus;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -15,15 +20,6 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class SoftwareAssembler {
-    private static final int STATUS_DRAFT = 0;
-    private static final int STATUS_REVIEWING = 1;
-    private static final int STATUS_PUBLISHED = 2;
-    private static final int STATUS_UNPUBLISHED = 3;
-    private static final int STATUS_REJECTED = 4;
-    private static final int VERSION_STATUS_DRAFT = 0;
-    private static final int VERSION_STATUS_APPROVED = 2;
-    private static final int PACKAGE_STATUS_AVAILABLE = 1;
-
     private final ObjectMapper objectMapper;
 
     public SoftwareAssembler(ObjectMapper objectMapper) {
@@ -46,7 +42,7 @@ public class SoftwareAssembler {
         response.setSupportedArchs(splitCsv(entity.getSupportedArchs()));
         response.setScreenshots(parseScreenshots(entity.getScreenshots()));
         response.setStatus(entity.getStatus());
-        response.setStatusText(statusText(entity.getStatus()));
+        response.setStatusText(SoftwareStatus.fromCode(entity.getStatus()).text());
         response.setIsOfficial(entity.getIsOfficial());
         response.setIsFeatured(entity.getIsFeatured());
         response.setSortWeight(entity.getSortWeight());
@@ -72,7 +68,7 @@ public class SoftwareAssembler {
         response.setChangelog(entity.getChangelog());
         response.setSubmitSource(entity.getSubmitSource());
         response.setStatus(entity.getStatus());
-        response.setStatusText(versionStatusText(entity.getStatus()));
+        response.setStatusText(AppVersionStatus.fromCode(entity.getStatus()).text());
         response.setIsLatest(entity.getIsLatest());
         response.setSubmittedAt(entity.getSubmittedAt());
         response.setReviewedAt(entity.getReviewedAt());
@@ -97,13 +93,13 @@ public class SoftwareAssembler {
         response.setSha256(entity.getSha256());
         response.setSignatureAlgorithm(entity.getSignatureAlgorithm());
         response.setSignatureStatus(entity.getSignatureStatus());
-        response.setSignatureStatusText(signatureStatusText(entity.getSignatureStatus()));
+        response.setSignatureStatusText(SignatureStatus.fromCode(entity.getSignatureStatus()).text());
         response.setSignatureVerifiedAt(entity.getSignatureVerifiedAt());
         response.setStatus(entity.getStatus());
-        response.setStatusText(packageStatusText(entity.getStatus()));
+        response.setStatusText(PackageStatus.fromCode(entity.getStatus()).text());
         response.setDownloadCount(entity.getDownloadCount());
         response.setScanStatus(entity.getScanStatus());
-        response.setScanStatusText(scanStatusText(entity.getScanStatus()));
+        response.setScanStatusText(PackageScanStatus.fromCode(entity.getScanStatus()).text());
         response.setScanReport(entity.getScanReport());
         response.setCreatedAt(entity.getCreatedAt());
         response.setUpdatedAt(entity.getUpdatedAt());
@@ -129,67 +125,5 @@ public class SoftwareAssembler {
         } catch (Exception ex) {
             return splitCsv(screenshots);
         }
-    }
-
-    private String statusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        return switch (status) {
-            case STATUS_DRAFT -> "草稿";
-            case STATUS_REVIEWING -> "审核中";
-            case STATUS_PUBLISHED -> "已上架";
-            case STATUS_UNPUBLISHED -> "已下架";
-            case STATUS_REJECTED -> "审核驳回";
-            default -> "未知";
-        };
-    }
-
-    private String versionStatusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        return switch (status) {
-            case VERSION_STATUS_DRAFT -> "草稿";
-            case 1 -> "审核中";
-            case VERSION_STATUS_APPROVED -> "已通过";
-            case 3 -> "审核驳回";
-            case 4 -> "已下架";
-            default -> "未知";
-        };
-    }
-
-    private String packageStatusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        return switch (status) {
-            case 0 -> "上传中";
-            case PACKAGE_STATUS_AVAILABLE -> "可用";
-            case 2 -> "已删除";
-            default -> "未知";
-        };
-    }
-
-    private String scanStatusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        return switch (status) {
-            case 0 -> "未扫描";
-            case 1 -> "安全";
-            case 2 -> "有风险";
-            case 3 -> "扫描失败";
-            default -> "未知";
-        };
-    }
-
-    private String signatureStatusText(Integer status) {
-        return switch (status == null ? 0 : status) {
-            case 0 -> "未校验";
-            case 1 -> "通过";
-            case 2 -> "失败";
-            default -> "未知";
-        };
     }
 }

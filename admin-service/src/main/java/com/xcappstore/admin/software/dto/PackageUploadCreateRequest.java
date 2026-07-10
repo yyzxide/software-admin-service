@@ -3,6 +3,7 @@ package com.xcappstore.admin.software.dto;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class PackageUploadCreateRequest {
@@ -22,6 +23,7 @@ public class PackageUploadCreateRequest {
     private Long chunkSize;
 
     @Size(max = 128, message = "SHA256 不能超过128个字符")
+    @Pattern(regexp = "^$|^[0-9a-fA-F]{64}$", message = "SHA256格式错误")
     private String expectedSha256;
 
     @Size(max = 64, message = "签名算法不能超过64个字符")

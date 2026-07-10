@@ -3,6 +3,8 @@ package com.xcappstore.admin.software.service;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.exception.BusinessException;
 import com.xcappstore.admin.software.entity.AppPackageEntity;
+import com.xcappstore.admin.software.model.PackageScanStatus;
+import com.xcappstore.admin.software.model.PackageStatus;
 import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationRequest;
 import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationResult;
 import com.xcappstore.admin.software.service.PackageFileStorageService.StoredPackage;
@@ -15,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class PackagePreparationService {
-    private static final int PACKAGE_STATUS_AVAILABLE = 1;
     private static final Set<String> ALLOWED_OS_TYPES = Set.of("uos_v20", "uos_v23", "kylin_v10", "kylin_v11");
     private static final Set<String> ALLOWED_ARCHS = Set.of("x86_64", "aarch64", "loongarch64");
     private static final Set<String> ALLOWED_PACKAGE_FORMATS = Set.of("deb", "rpm", "appimage");
@@ -83,14 +84,20 @@ public class PackagePreparationService {
         packageInfo.setStoragePath(storedPackage.storagePath());
         packageInfo.setSha256(storedPackage.sha256());
         applyPackageVerification(packageInfo, verifiedPackage.verificationResult());
-        packageInfo.setStatus(PACKAGE_STATUS_AVAILABLE);
+        packageInfo.setStatus(PackageStatus.AVAILABLE.code());
         packageInfo.setDownloadCount(0L);
-        packageInfo.setScanStatus(0);
+        packageInfo.setScanStatus(PackageScanStatus.UNSCANNED.code());
         packageInfo.setCreatedAt(now);
         packageInfo.setUpdatedAt(now);
         packageInfo.setCreatedBy(operatorId);
         packageInfo.setUpdatedBy(operatorId);
         return packageInfo;
+    }
+
+    public void deleteStoredPackageQuietly(VerifiedPackage verifiedPackage) {
+        if (verifiedPackage != null) {
+            packageFileStorageService.deleteStoredPackageQuietly(verifiedPackage.storedPackage());
+        }
     }
 
     private String requireAllowed(String value, Set<String> allowedValues, String message) {

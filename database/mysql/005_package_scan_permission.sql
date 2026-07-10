@@ -3,7 +3,12 @@ SET NAMES utf8mb4;
 USE db_java_software_admin;
 
 INSERT IGNORE INTO admin_permissions (permission_code, permission_name, module, description) VALUES
-('software:package:scan', '模拟扫描安装包', 'software', '更新安装包本地模拟扫描结果');
+('software:package:scan', '安装包安全状态', 'software', '更新安装包安全状态结果');
+
+UPDATE admin_permissions
+SET permission_name = '安装包安全状态',
+    description = '更新安装包安全状态结果'
+WHERE permission_code = 'software:package:scan';
 
 INSERT IGNORE INTO admin_role_permissions (role_id, permission_id)
 SELECT r.id, p.id

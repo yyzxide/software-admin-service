@@ -90,7 +90,12 @@ public class PackageFileStorageService {
         PackageVerificationRequest verificationRequest
     ) {
         StoredPackage storedPackage = store(file, packageFormat);
-        return new VerifiedPackage(storedPackage, verifyStoredPackage(storedPackage, verificationRequest));
+        try {
+            return new VerifiedPackage(storedPackage, verifyStoredPackage(storedPackage, verificationRequest));
+        } catch (RuntimeException ex) {
+            deleteStoredPackageQuietly(storedPackage);
+            throw ex;
+        }
     }
 
     public VerifiedPackage storeCompletedFile(
@@ -122,7 +127,12 @@ public class PackageFileStorageService {
                 packageRoot.relativize(target).toString().replace('\\', '/'),
                 HexFormat.of().formatHex(digest.digest())
             );
-            return new VerifiedPackage(storedPackage, verifyStoredPackage(storedPackage, verificationRequest));
+            try {
+                return new VerifiedPackage(storedPackage, verifyStoredPackage(storedPackage, verificationRequest));
+            } catch (RuntimeException ex) {
+                deleteStoredPackageQuietly(storedPackage);
+                throw ex;
+            }
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -184,6 +194,21 @@ public class PackageFileStorageService {
 
     public long maxPackageBytes() {
         return maxPackageBytes;
+    }
+
+    public void deleteStoredPackageQuietly(StoredPackage storedPackage) {
+        if (storedPackage == null || !StringUtils.hasText(storedPackage.storagePath())) {
+            return;
+        }
+        Path target = packageRoot.resolve(storedPackage.storagePath()).normalize();
+        if (!target.startsWith(packageRoot)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(target);
+        } catch (Exception ex) {
+            log.warn("Failed to cleanup stored package file {}", target, ex);
+        }
     }
 
     public String sanitizeOriginalFileName(String originalName) {

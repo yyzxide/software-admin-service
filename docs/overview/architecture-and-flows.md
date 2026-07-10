@@ -10,7 +10,7 @@
 
 - 业务闭环清晰：软件、版本、安装包、审核任务和操作日志串起来。
 - 状态可控：草稿、审核中、已上架、已下架、驳回等状态通过 Service 和 SQL 条件共同约束。
-- 安全前置：密码哈希、Token 会话版本、RBAC、签名校验和扫描状态都进入主链路。
+- 安全前置：密码哈希、Token 会话版本、RBAC、签名校验和安全状态都进入主链路。
 - 工程可讲：Service 分层、MyBatis XML、事务、缓存失效、审计和测试都有明确边界。
 
 ## 总体结构
@@ -53,21 +53,21 @@ sequenceDiagram
     participant Storage as PackageFileStorageService
     participant Review as ReviewService
     participant DB as MySQL
-    participant Log as OperationLogService
+    participant Log as OperationLogPublisher
 
     Admin->>Software: 上传软件/新增版本/追加安装包
     Software->>Prep: 校验 OS/架构/包格式
     Prep->>Storage: 保存文件并计算 SHA256/签名状态
     Software->>DB: 写 apps/app_versions/app_packages/app_tags
-    Software->>Log: 记录上传或新增操作
+    Software->>Log: 事务提交后记录上传或新增操作
     Admin->>Review: 提交审核
     Review->>DB: 创建 review_tasks/review_histories
-    Admin->>Software: 模拟扫描安装包
+    Admin->>Software: 标记安装包安全状态
     Software->>DB: 更新 scan_status/scan_report
     Admin->>Review: 审核通过
-    Review->>DB: 检查签名和扫描状态
+    Review->>DB: 检查签名和安全状态
     Review->>DB: 条件更新审核任务并发布软件
-    Review->>Log: 记录审核操作
+    Review->>Log: 事务提交后记录审核操作
 ```
 
 ## 鉴权和权限流程
@@ -108,8 +108,8 @@ stateDiagram-v2
     Unscanned --> Safe: result=safe
     Unscanned --> Risky: result=risky
     Unscanned --> Failed: result=failed
-    Risky --> Safe: 重新扫描通过
-    Failed --> Safe: 重新扫描通过
+    Risky --> Safe: 重新标记通过
+    Failed --> Safe: 重新标记通过
     Safe --> Published: 审核通过或上架
     Unscanned --> Blocked: 审核/上架拦截
     Risky --> Blocked: 审核/上架拦截

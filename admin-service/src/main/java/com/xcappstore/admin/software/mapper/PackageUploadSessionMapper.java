@@ -23,6 +23,8 @@ public interface PackageUploadSessionMapper {
         @Param("uploadedChunkCount") Integer uploadedChunkCount
     );
 
+    int markCompleting(@Param("uploadId") String uploadId);
+
     int complete(
         @Param("uploadId") String uploadId,
         @Param("actualSha256") String actualSha256,

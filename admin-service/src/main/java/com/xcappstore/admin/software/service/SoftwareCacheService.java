@@ -1,6 +1,7 @@
 package com.xcappstore.admin.software.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xcappstore.admin.common.TransactionActions;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
 import java.time.Duration;
 import java.util.Optional;
@@ -46,11 +47,13 @@ public class SoftwareCacheService {
     }
 
     public void invalidateDetail(Long id) {
-        try {
-            redisTemplate.delete(detailKey(id));
-        } catch (Exception ex) {
-            log.warn("Invalidate software detail cache failed: {}", ex.getMessage());
-        }
+        TransactionActions.afterCommit(() -> {
+            try {
+                redisTemplate.delete(detailKey(id));
+            } catch (Exception ex) {
+                log.warn("Invalidate software detail cache failed: {}", ex.getMessage());
+            }
+        });
     }
 
     private String detailKey(Long id) {

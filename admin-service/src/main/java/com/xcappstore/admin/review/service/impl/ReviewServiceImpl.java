@@ -3,7 +3,7 @@ package com.xcappstore.admin.review.service.impl;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
-import com.xcappstore.admin.operationlog.service.OperationLogService;
+import com.xcappstore.admin.operationlog.service.OperationLogPublisher;
 import com.xcappstore.admin.review.dto.ReviewAssignRequest;
 import com.xcappstore.admin.review.dto.ReviewDecisionRequest;
 import com.xcappstore.admin.review.dto.ReviewHistoryResponse;
@@ -13,14 +13,16 @@ import com.xcappstore.admin.review.dto.ReviewTaskResponse;
 import com.xcappstore.admin.review.entity.ReviewHistoryEntity;
 import com.xcappstore.admin.review.entity.ReviewTaskEntity;
 import com.xcappstore.admin.review.mapper.ReviewMapper;
+import com.xcappstore.admin.review.model.ReviewTaskStatus;
 import com.xcappstore.admin.review.service.ReviewService;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
+import com.xcappstore.admin.software.model.SoftwareStatus;
 import com.xcappstore.admin.software.service.PackageSecurityPolicyService;
+import com.xcappstore.admin.software.service.SoftwareCacheService;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,31 +30,27 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class ReviewServiceImpl implements ReviewService {
-    private static final int TASK_PENDING = 0;
-    private static final int TASK_REVIEWING = 1;
-    private static final int TASK_APPROVED = 2;
-    private static final int TASK_REJECTED = 3;
-    private static final int APP_STATUS_REVIEWING = 1;
-    private static final int APP_STATUS_PUBLISHED = 2;
-    private static final Set<Integer> DECIDABLE_STATUSES = Set.of(TASK_PENDING, TASK_REVIEWING);
     private static final String TARGET_SOFTWARE = "software";
     private static final String TARGET_VERSION = "version";
 
     private final ReviewMapper reviewMapper;
     private final SoftwareMapper softwareMapper;
     private final PackageSecurityPolicyService packageSecurityPolicyService;
-    private final OperationLogService operationLogService;
+    private final SoftwareCacheService softwareCacheService;
+    private final OperationLogPublisher operationLogPublisher;
 
     public ReviewServiceImpl(
         ReviewMapper reviewMapper,
         SoftwareMapper softwareMapper,
         PackageSecurityPolicyService packageSecurityPolicyService,
-        OperationLogService operationLogService
+        SoftwareCacheService softwareCacheService,
+        OperationLogPublisher operationLogPublisher
     ) {
         this.reviewMapper = reviewMapper;
         this.softwareMapper = softwareMapper;
         this.packageSecurityPolicyService = packageSecurityPolicyService;
-        this.operationLogService = operationLogService;
+        this.softwareCacheService = softwareCacheService;
+        this.operationLogPublisher = operationLogPublisher;
     }
 
     @Override
@@ -64,6 +62,9 @@ public class ReviewServiceImpl implements ReviewService {
         if (request.getVersionId() != null) {
             version = requireVersion(app.getId(), request.getVersionId());
         }
+        if (version == null && !SoftwareStatus.fromCode(app.getStatus()).canSubmitReview()) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "当前软件状态不允许提交审核");
+        }
         if (reviewMapper.countActiveTask(app.getId(), version == null ? null : version.getId()) > 0) {
             throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该软件存在待处理审核任务");
         }
@@ -74,7 +75,7 @@ public class ReviewServiceImpl implements ReviewService {
         task.setVersionId(version == null ? null : version.getId());
         task.setTargetType(version == null ? TARGET_SOFTWARE : TARGET_VERSION);
         task.setTitle(version == null ? app.getName() + " 上架审核" : app.getName() + " " + version.getVersionName() + " 版本审核");
-        task.setStatus(TASK_PENDING);
+        task.setStatus(ReviewTaskStatus.PENDING.code());
         task.setPriority(request.getPriority() == null ? 1 : request.getPriority());
         task.setSubmitReason(normalizeText(request.getReason()));
         task.setSubmittedBy(operatorId);
@@ -86,7 +87,7 @@ public class ReviewServiceImpl implements ReviewService {
         } catch (DuplicateKeyException ex) {
             throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该软件存在待处理审核任务");
         }
-        insertHistory(task.getId(), "submit", null, TASK_PENDING, operatorId, request.getReason(), now);
+        insertHistory(task.getId(), "submit", null, ReviewTaskStatus.PENDING.code(), operatorId, request.getReason(), now);
 
         softwareMapper.updateAppReviewing(app.getId(), operatorId);
         if (version == null) {
@@ -94,7 +95,8 @@ public class ReviewServiceImpl implements ReviewService {
         } else {
             softwareMapper.updateVersionReviewing(version.getId(), operatorId);
         }
-        operationLogService.record(operatorId, "submit_review", "review_task", task.getId(), task.getTitle(), "提交审核任务: " + task.getTitle());
+        softwareCacheService.invalidateDetail(app.getId());
+        operationLogPublisher.record(operatorId, "submit_review", "review_task", task.getId(), task.getTitle(), "提交审核任务: " + task.getTitle());
         return detail(task.getId());
     }
 
@@ -125,10 +127,10 @@ public class ReviewServiceImpl implements ReviewService {
         ensureDecidable(task);
         Long operatorId = normalizeAdminUserId(adminUserId);
         LocalDateTime now = LocalDateTime.now();
-        int affected = reviewMapper.assign(id, request.getReviewerId(), TASK_REVIEWING, now);
+        int affected = reviewMapper.assign(id, request.getReviewerId(), ReviewTaskStatus.REVIEWING.code(), now);
         ensureUpdated(affected);
-        insertHistory(id, "assign", task.getStatus(), TASK_REVIEWING, operatorId, "分配审核人: " + request.getReviewerId(), now);
-        operationLogService.record(operatorId, "assign_review", "review_task", id, task.getTitle(), "分配审核任务: " + task.getTitle());
+        insertHistory(id, "assign", task.getStatus(), ReviewTaskStatus.REVIEWING.code(), operatorId, "分配审核人: " + request.getReviewerId(), now);
+        operationLogPublisher.record(operatorId, "assign_review", "review_task", id, task.getTitle(), "分配审核任务: " + task.getTitle());
         return detail(id);
     }
 
@@ -145,17 +147,18 @@ public class ReviewServiceImpl implements ReviewService {
         }
         LocalDateTime now = LocalDateTime.now();
         String comment = defaultText(normalizeText(request == null ? null : request.getComment()), "审核通过");
-        int affected = reviewMapper.finish(id, TASK_APPROVED, comment, operatorId, now, now);
+        int affected = reviewMapper.finish(id, ReviewTaskStatus.APPROVED.code(), comment, operatorId, now, now);
         ensureUpdated(affected);
-        insertHistory(id, "approve", task.getStatus(), TASK_APPROVED, operatorId, comment, now);
+        insertHistory(id, "approve", task.getStatus(), ReviewTaskStatus.APPROVED.code(), operatorId, comment, now);
         if (task.getVersionId() != null) {
             softwareMapper.markVersionsNotLatest(task.getAppId(), operatorId);
             softwareMapper.approveVersion(task.getVersionId(), now, now, operatorId);
         } else {
             softwareMapper.approveDraftVersions(task.getAppId(), now, now, operatorId);
         }
-        softwareMapper.updateStatus(task.getAppId(), APP_STATUS_PUBLISHED, now, operatorId);
-        operationLogService.record(operatorId, "approve_review", "review_task", id, task.getTitle(), "审核通过: " + task.getTitle());
+        softwareMapper.updateStatus(task.getAppId(), SoftwareStatus.PUBLISHED.code(), now, operatorId);
+        softwareCacheService.invalidateDetail(task.getAppId());
+        operationLogPublisher.record(operatorId, "approve_review", "review_task", id, task.getTitle(), "审核通过: " + task.getTitle());
         return detail(id);
     }
 
@@ -167,16 +170,17 @@ public class ReviewServiceImpl implements ReviewService {
         Long operatorId = normalizeAdminUserId(adminUserId);
         LocalDateTime now = LocalDateTime.now();
         String comment = defaultText(normalizeText(request == null ? null : request.getComment()), "审核驳回");
-        int affected = reviewMapper.finish(id, TASK_REJECTED, comment, operatorId, now, now);
+        int affected = reviewMapper.finish(id, ReviewTaskStatus.REJECTED.code(), comment, operatorId, now, now);
         ensureUpdated(affected);
-        insertHistory(id, "reject", task.getStatus(), TASK_REJECTED, operatorId, comment, now);
+        insertHistory(id, "reject", task.getStatus(), ReviewTaskStatus.REJECTED.code(), operatorId, comment, now);
         softwareMapper.rejectAppReview(task.getAppId(), now, operatorId);
         if (task.getVersionId() != null) {
             softwareMapper.rejectVersion(task.getVersionId(), now, operatorId);
         } else {
             softwareMapper.rejectDraftVersions(task.getAppId(), now, operatorId);
         }
-        operationLogService.record(operatorId, "reject_review", "review_task", id, task.getTitle(), "审核驳回: " + task.getTitle());
+        softwareCacheService.invalidateDetail(task.getAppId());
+        operationLogPublisher.record(operatorId, "reject_review", "review_task", id, task.getTitle(), "审核驳回: " + task.getTitle());
         return detail(id);
     }
 
@@ -214,7 +218,7 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     private void ensureDecidable(ReviewTaskEntity task) {
-        if (!DECIDABLE_STATUSES.contains(task.getStatus())) {
+        if (!ReviewTaskStatus.fromCode(task.getStatus()).canDecide()) {
             throw new BusinessException(ErrorCode.REVIEW_INVALID_STATUS, "当前审核任务状态不允许操作");
         }
     }
@@ -265,7 +269,7 @@ public class ReviewServiceImpl implements ReviewService {
         response.setVersionName(task.getVersionName());
         response.setTitle(task.getTitle());
         response.setStatus(task.getStatus());
-        response.setStatusText(statusText(task.getStatus()));
+        response.setStatusText(ReviewTaskStatus.fromCode(task.getStatus()).text());
         response.setPriority(task.getPriority());
         response.setPriorityText(priorityText(task.getPriority()));
         response.setSubmitReason(task.getSubmitReason());
@@ -285,27 +289,13 @@ public class ReviewServiceImpl implements ReviewService {
         response.setTaskId(history.getTaskId());
         response.setAction(history.getAction());
         response.setFromStatus(history.getFromStatus());
-        response.setFromStatusText(statusText(history.getFromStatus()));
+        response.setFromStatusText(ReviewTaskStatus.fromCode(history.getFromStatus()).text());
         response.setToStatus(history.getToStatus());
-        response.setToStatusText(statusText(history.getToStatus()));
+        response.setToStatusText(ReviewTaskStatus.fromCode(history.getToStatus()).text());
         response.setOperatorId(history.getOperatorId());
         response.setComment(history.getComment());
         response.setCreatedAt(history.getCreatedAt());
         return response;
-    }
-
-    private String statusText(Integer status) {
-        if (status == null) {
-            return "未知";
-        }
-        return switch (status) {
-            case TASK_PENDING -> "待审核";
-            case TASK_REVIEWING -> "审核中";
-            case TASK_APPROVED -> "已通过";
-            case TASK_REJECTED -> "已驳回";
-            case 4 -> "已取消";
-            default -> "未知";
-        };
     }
 
     private String priorityText(Integer priority) {

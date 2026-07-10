@@ -24,7 +24,7 @@
 ### Design：讲清设计
 
 - [RBAC 权限模型设计](design/rbac-design.md)：管理员、角色、权限点和接口拦截。
-- [安全和上传限制设计](design/security-and-upload.md)：Token、密码、上传限制、签名和扫描策略。
+- [安全和上传限制设计](design/security-and-upload.md)：Token、密码、上传限制、签名和安全状态策略。
 - [分片上传、断点续传和签名校验设计](design/upload-resume-and-signature.md)：大文件上传链路。
 - [ID 和业务编码设计](design/id-and-business-key-design.md)：数据库 ID、业务编码和页面展示边界。
 

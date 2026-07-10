@@ -2,6 +2,7 @@ package com.xcappstore.admin.tag.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xcappstore.admin.common.TransactionActions;
 import com.xcappstore.admin.tag.dto.TagResponse;
 import java.time.Duration;
 import java.util.List;
@@ -52,13 +53,15 @@ public class TagCacheService {
     }
 
     public void invalidate() {
-        try {
-            redisTemplate.delete(LIST_ALL_KEY);
-            redisTemplate.delete(LIST_HOT_KEY);
-            redisTemplate.delete(LIST_NORMAL_KEY);
-        } catch (Exception ex) {
-            log.warn("Invalidate tag cache failed: {}", ex.getMessage());
-        }
+        TransactionActions.afterCommit(() -> {
+            try {
+                redisTemplate.delete(LIST_ALL_KEY);
+                redisTemplate.delete(LIST_HOT_KEY);
+                redisTemplate.delete(LIST_NORMAL_KEY);
+            } catch (Exception ex) {
+                log.warn("Invalidate tag cache failed: {}", ex.getMessage());
+            }
+        });
     }
 
     private String listKey(Integer isHot) {

@@ -1,6 +1,8 @@
 package com.xcappstore.admin.software.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -9,6 +11,7 @@ public class VersionCreateRequest {
     @Size(max = 64, message = "版本名称不能超过64个字符")
     private String versionName;
 
+    @Positive(message = "版本号必须大于0")
     private Long versionCode;
     private String changelog;
 
@@ -23,6 +26,7 @@ public class VersionCreateRequest {
 
     private Boolean publishNow;
     private String uploadSessionId;
+    @Pattern(regexp = "^$|^[0-9a-fA-F]{64}$", message = "SHA256格式错误")
     private String expectedSha256;
     private String signatureAlgorithm;
     private String signatureValue;

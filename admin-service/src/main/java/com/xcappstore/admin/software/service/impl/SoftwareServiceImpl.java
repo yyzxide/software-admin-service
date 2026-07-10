@@ -5,20 +5,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
-import com.xcappstore.admin.operationlog.service.OperationLogService;
+import com.xcappstore.admin.operationlog.service.OperationLogPublisher;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
 import com.xcappstore.admin.software.dto.PackageScanRequest;
-import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
 import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
+import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
 import com.xcappstore.admin.software.dto.VersionCreateRequest;
 import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
+import com.xcappstore.admin.software.model.AppVersionStatus;
+import com.xcappstore.admin.software.model.SoftwareStatus;
 import com.xcappstore.admin.software.service.PackageFileStorageService.VerifiedPackage;
 import com.xcappstore.admin.software.service.PackagePreparationService;
 import com.xcappstore.admin.software.service.PackagePreparationService.PackageSpec;
@@ -39,25 +41,11 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class SoftwareServiceImpl implements SoftwareService {
-    private static final int STATUS_DRAFT = 0;
-    private static final int STATUS_REVIEWING = 1;
-    private static final int STATUS_PUBLISHED = 2;
-    private static final int STATUS_UNPUBLISHED = 3;
-    private static final int STATUS_REJECTED = 4;
-    private static final int VERSION_STATUS_DRAFT = 0;
     private static final String SUBMIT_SOURCE_ADMIN = "admin";
-    private static final Set<Integer> PUBLISHABLE_STATUSES = Set.of(
-        STATUS_PUBLISHED,
-        STATUS_UNPUBLISHED
-    );
-    private static final Set<Integer> UNPUBLISHABLE_STATUSES = Set.of(
-        STATUS_REVIEWING,
-        STATUS_PUBLISHED,
-        STATUS_REJECTED
-    );
 
     private final SoftwareMapper softwareMapper;
     private final SoftwareCacheService softwareCacheService;
@@ -65,7 +53,7 @@ public class SoftwareServiceImpl implements SoftwareService {
     private final PackageScanPolicyService packageScanPolicyService;
     private final PackagePreparationService packagePreparationService;
     private final SoftwareAssembler softwareAssembler;
-    private final OperationLogService operationLogService;
+    private final OperationLogPublisher operationLogPublisher;
     private final ObjectMapper objectMapper;
 
     public SoftwareServiceImpl(
@@ -75,7 +63,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         PackageScanPolicyService packageScanPolicyService,
         PackagePreparationService packagePreparationService,
         SoftwareAssembler softwareAssembler,
-        OperationLogService operationLogService,
+        OperationLogPublisher operationLogPublisher,
         ObjectMapper objectMapper
     ) {
         this.softwareMapper = softwareMapper;
@@ -84,7 +72,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         this.packageScanPolicyService = packageScanPolicyService;
         this.packagePreparationService = packagePreparationService;
         this.softwareAssembler = softwareAssembler;
-        this.operationLogService = operationLogService;
+        this.operationLogPublisher = operationLogPublisher;
         this.objectMapper = objectMapper;
     }
 
@@ -118,68 +106,73 @@ public class SoftwareServiceImpl implements SoftwareService {
             request.getSignatureValue(),
             operatorId
         );
-        LocalDateTime now = LocalDateTime.now();
+        boolean cleanupOnFailure = isDirectPackageUpload(request.getPackageFile(), request.getUploadSessionId());
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            SoftwareEntity app = new SoftwareEntity();
+            app.setAppKey(appKey);
+            app.setName(normalizeText(request.getName()));
+            app.setDeveloperId(operatorId);
+            app.setSubmitSource(SUBMIT_SOURCE_ADMIN);
+            app.setCategoryId(request.getCategoryId());
+            app.setIconUrl(defaultText(normalizeText(request.getIconUrl()), ""));
+            app.setSummary(normalizeText(request.getSummary()));
+            app.setDescription(normalizeText(request.getDescription()));
+            app.setSupportedOsTypes(defaultText(normalizeCsv(request.getSupportedOsTypes()), packageSpec.osType()));
+            app.setSupportedArchs(defaultText(normalizeCsv(request.getSupportedArchs()), packageSpec.arch()));
+            app.setScreenshots(normalizeScreenshots(request.getScreenshots()));
+            app.setStatus(SoftwareStatus.DRAFT.code());
+            app.setIsOfficial(0);
+            app.setIsFeatured(0);
+            app.setSortWeight(0);
+            app.setDownloadCount(0L);
+            app.setRatingScore(BigDecimal.ZERO);
+            app.setRatingCount(0);
+            app.setPublishedAt(null);
+            app.setCreatedAt(now);
+            app.setUpdatedAt(now);
+            app.setCreatedBy(operatorId);
+            app.setUpdatedBy(operatorId);
+            softwareMapper.insertApp(app);
 
-        SoftwareEntity app = new SoftwareEntity();
-        app.setAppKey(appKey);
-        app.setName(normalizeText(request.getName()));
-        app.setDeveloperId(operatorId);
-        app.setSubmitSource(SUBMIT_SOURCE_ADMIN);
-        app.setCategoryId(request.getCategoryId());
-        app.setIconUrl(defaultText(normalizeText(request.getIconUrl()), ""));
-        app.setSummary(normalizeText(request.getSummary()));
-        app.setDescription(normalizeText(request.getDescription()));
-        app.setSupportedOsTypes(defaultText(normalizeCsv(request.getSupportedOsTypes()), packageSpec.osType()));
-        app.setSupportedArchs(defaultText(normalizeCsv(request.getSupportedArchs()), packageSpec.arch()));
-        app.setScreenshots(normalizeScreenshots(request.getScreenshots()));
-        app.setStatus(STATUS_DRAFT);
-        app.setIsOfficial(0);
-        app.setIsFeatured(0);
-        app.setSortWeight(0);
-        app.setDownloadCount(0L);
-        app.setRatingScore(BigDecimal.ZERO);
-        app.setRatingCount(0);
-        app.setPublishedAt(null);
-        app.setCreatedAt(now);
-        app.setUpdatedAt(now);
-        app.setCreatedBy(operatorId);
-        app.setUpdatedBy(operatorId);
-        softwareMapper.insertApp(app);
+            AppVersionEntity version = new AppVersionEntity();
+            version.setAppId(app.getId());
+            version.setVersionName(normalizeText(request.getVersionName()));
+            version.setVersionCode(request.getVersionCode() == null ? System.currentTimeMillis() / 1000 : request.getVersionCode());
+            version.setSubmitSource(SUBMIT_SOURCE_ADMIN);
+            version.setStatus(AppVersionStatus.DRAFT.code());
+            version.setIsLatest(1);
+            version.setSubmittedAt(now);
+            version.setReviewedAt(null);
+            version.setPublishedAt(null);
+            version.setCreatedAt(now);
+            version.setUpdatedAt(now);
+            version.setCreatedBy(operatorId);
+            version.setUpdatedBy(operatorId);
+            softwareMapper.insertVersion(version);
 
-        AppVersionEntity version = new AppVersionEntity();
-        version.setAppId(app.getId());
-        version.setVersionName(normalizeText(request.getVersionName()));
-        version.setVersionCode(request.getVersionCode() == null ? System.currentTimeMillis() / 1000 : request.getVersionCode());
-        version.setSubmitSource(SUBMIT_SOURCE_ADMIN);
-        version.setStatus(VERSION_STATUS_DRAFT);
-        version.setIsLatest(1);
-        version.setSubmittedAt(now);
-        version.setReviewedAt(null);
-        version.setPublishedAt(null);
-        version.setCreatedAt(now);
-        version.setUpdatedAt(now);
-        version.setCreatedBy(operatorId);
-        version.setUpdatedBy(operatorId);
-        softwareMapper.insertVersion(version);
+            AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
+                app.getId(),
+                version.getId(),
+                packageSpec,
+                verifiedPackage,
+                operatorId,
+                now
+            );
+            softwareMapper.insertPackage(packageInfo);
 
-        AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
-            app.getId(),
-            version.getId(),
-            packageSpec,
-            verifiedPackage,
-            operatorId,
-            now
-        );
-        softwareMapper.insertPackage(packageInfo);
+            for (Long tagId : tagIds) {
+                softwareMapper.insertAppTag(app.getId(), tagId);
+            }
 
-        for (Long tagId : tagIds) {
-            softwareMapper.insertAppTag(app.getId(), tagId);
+            softwareCacheService.invalidateDetail(app.getId());
+            SoftwareResponse response = freshDetail(app.getId());
+            operationLogPublisher.record(operatorId, "software_upload", "software", app.getId(), app.getName(), "上传软件: " + app.getName());
+            return response;
+        } catch (RuntimeException ex) {
+            cleanupDirectPackageIfNecessary(cleanupOnFailure, verifiedPackage);
+            throw ex;
         }
-
-        softwareCacheService.invalidateDetail(app.getId());
-        SoftwareResponse response = detail(app.getId());
-        operationLogService.record(operatorId, "software_upload", "software", app.getId(), app.getName(), "上传软件: " + app.getName());
-        return response;
     }
 
     @Override
@@ -242,8 +235,8 @@ public class SoftwareServiceImpl implements SoftwareService {
         }
 
         softwareCacheService.invalidateDetail(id);
-        SoftwareResponse response = detail(id);
-        operationLogService.record(operatorId, "software_update", "software", id, response.getName(), "编辑软件资料: " + response.getName());
+        SoftwareResponse response = freshDetail(id);
+        operationLogPublisher.record(operatorId, "software_update", "software", id, response.getName(), "编辑软件资料: " + response.getName());
         return response;
     }
 
@@ -251,17 +244,17 @@ public class SoftwareServiceImpl implements SoftwareService {
     @Transactional
     public SoftwareResponse publish(Long id, Long adminUserId) {
         SoftwareEntity app = requireSoftware(id);
-        if (!PUBLISHABLE_STATUSES.contains(app.getStatus())) {
+        if (!SoftwareStatus.fromCode(app.getStatus()).canPublish()) {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "软件需审核通过后才能上架");
         }
 
         Long operatorId = normalizeAdminUserId(adminUserId);
         packageSecurityPolicyService.assertAppPackagesPublishable(id);
         LocalDateTime now = LocalDateTime.now();
-        softwareMapper.updateStatus(id, STATUS_PUBLISHED, now, operatorId);
+        softwareMapper.updateStatus(id, SoftwareStatus.PUBLISHED.code(), now, operatorId);
         softwareCacheService.invalidateDetail(id);
-        SoftwareResponse response = detail(id);
-        operationLogService.record(operatorId, "software_publish", "software", id, response.getName(), "上架软件: " + response.getName());
+        SoftwareResponse response = freshDetail(id);
+        operationLogPublisher.record(operatorId, "software_publish", "software", id, response.getName(), "上架软件: " + response.getName());
         return response;
     }
 
@@ -269,15 +262,15 @@ public class SoftwareServiceImpl implements SoftwareService {
     @Transactional
     public SoftwareResponse unpublish(Long id, Long adminUserId) {
         SoftwareEntity app = requireSoftware(id);
-        if (!UNPUBLISHABLE_STATUSES.contains(app.getStatus())) {
+        if (!SoftwareStatus.fromCode(app.getStatus()).canUnpublish()) {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "当前状态不允许下架");
         }
 
         Long operatorId = normalizeAdminUserId(adminUserId);
-        softwareMapper.updateStatus(id, STATUS_UNPUBLISHED, app.getPublishedAt(), operatorId);
+        softwareMapper.updateStatus(id, SoftwareStatus.UNPUBLISHED.code(), app.getPublishedAt(), operatorId);
         softwareCacheService.invalidateDetail(id);
-        SoftwareResponse response = detail(id);
-        operationLogService.record(operatorId, "software_unpublish", "software", id, response.getName(), "下架软件: " + response.getName());
+        SoftwareResponse response = freshDetail(id);
+        operationLogPublisher.record(operatorId, "software_unpublish", "software", id, response.getName(), "下架软件: " + response.getName());
         return response;
     }
 
@@ -309,40 +302,45 @@ public class SoftwareServiceImpl implements SoftwareService {
             request.getSignatureValue(),
             operatorId
         );
-        LocalDateTime now = LocalDateTime.now();
+        boolean cleanupOnFailure = isDirectPackageUpload(request.getPackageFile(), request.getUploadSessionId());
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            AppVersionEntity version = new AppVersionEntity();
+            version.setAppId(appId);
+            version.setVersionName(normalizeText(request.getVersionName()));
+            version.setVersionCode(versionCode);
+            version.setChangelog(normalizeText(request.getChangelog()));
+            version.setSubmitSource(SUBMIT_SOURCE_ADMIN);
+            version.setStatus(AppVersionStatus.DRAFT.code());
+            version.setIsLatest(0);
+            version.setSubmittedAt(now);
+            version.setReviewedAt(null);
+            version.setPublishedAt(null);
+            version.setCreatedAt(now);
+            version.setUpdatedAt(now);
+            version.setCreatedBy(operatorId);
+            version.setUpdatedBy(operatorId);
+            softwareMapper.insertVersion(version);
 
-        AppVersionEntity version = new AppVersionEntity();
-        version.setAppId(appId);
-        version.setVersionName(normalizeText(request.getVersionName()));
-        version.setVersionCode(versionCode);
-        version.setChangelog(normalizeText(request.getChangelog()));
-        version.setSubmitSource(SUBMIT_SOURCE_ADMIN);
-        version.setStatus(VERSION_STATUS_DRAFT);
-        version.setIsLatest(0);
-        version.setSubmittedAt(now);
-        version.setReviewedAt(null);
-        version.setPublishedAt(null);
-        version.setCreatedAt(now);
-        version.setUpdatedAt(now);
-        version.setCreatedBy(operatorId);
-        version.setUpdatedBy(operatorId);
-        softwareMapper.insertVersion(version);
+            AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
+                appId,
+                version.getId(),
+                packageSpec,
+                verifiedPackage,
+                operatorId,
+                now
+            );
+            softwareMapper.insertPackage(packageInfo);
 
-        AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
-            appId,
-            version.getId(),
-            packageSpec,
-            verifiedPackage,
-            operatorId,
-            now
-        );
-        softwareMapper.insertPackage(packageInfo);
-
-        softwareCacheService.invalidateDetail(appId);
-        operationLogService.record(operatorId, "software_version_create", "software_version", version.getId(), app.getName() + " " + version.getVersionName(), "新增软件版本: " + app.getName() + " " + version.getVersionName());
-        AppVersionResponse response = softwareAssembler.toVersionResponse(version);
-        response.setPackages(List.of(softwareAssembler.toPackageResponse(packageInfo)));
-        return response;
+            softwareCacheService.invalidateDetail(appId);
+            operationLogPublisher.record(operatorId, "software_version_create", "software_version", version.getId(), app.getName() + " " + version.getVersionName(), "新增软件版本: " + app.getName() + " " + version.getVersionName());
+            AppVersionResponse response = softwareAssembler.toVersionResponse(version);
+            response.setPackages(List.of(softwareAssembler.toPackageResponse(packageInfo)));
+            return response;
+        } catch (RuntimeException ex) {
+            cleanupDirectPackageIfNecessary(cleanupOnFailure, verifiedPackage);
+            throw ex;
+        }
     }
 
     @Override
@@ -356,7 +354,7 @@ public class SoftwareServiceImpl implements SoftwareService {
             request.getArch(),
             request.getPackageFormat()
         );
-        if (softwareMapper.countPackageVariant(versionId, packageSpec.osType(), packageSpec.arch()) > 0) {
+        if (softwareMapper.countPackageVariant(versionId, packageSpec.osType(), packageSpec.arch(), packageSpec.packageFormat()) > 0) {
             throw new BusinessException(ErrorCode.DUPLICATE_RESOURCE, "该版本已存在相同系统和架构的安装包");
         }
 
@@ -369,20 +367,26 @@ public class SoftwareServiceImpl implements SoftwareService {
             request.getSignatureValue(),
             operatorId
         );
-        LocalDateTime now = LocalDateTime.now();
-        AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
-            appId,
-            versionId,
-            packageSpec,
-            verifiedPackage,
-            operatorId,
-            now
-        );
-        softwareMapper.insertPackage(packageInfo);
+        boolean cleanupOnFailure = isDirectPackageUpload(request.getPackageFile(), request.getUploadSessionId());
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            AppPackageEntity packageInfo = packagePreparationService.buildAvailablePackage(
+                appId,
+                versionId,
+                packageSpec,
+                verifiedPackage,
+                operatorId,
+                now
+            );
+            softwareMapper.insertPackage(packageInfo);
 
-        softwareCacheService.invalidateDetail(appId);
-        operationLogService.record(operatorId, "software_package_create", "software_package", packageInfo.getId(), packageInfo.getFileName(), "新增安装包: " + packageInfo.getFileName());
-        return softwareAssembler.toPackageResponse(packageInfo);
+            softwareCacheService.invalidateDetail(appId);
+            operationLogPublisher.record(operatorId, "software_package_create", "software_package", packageInfo.getId(), packageInfo.getFileName(), "新增安装包: " + packageInfo.getFileName());
+            return softwareAssembler.toPackageResponse(packageInfo);
+        } catch (RuntimeException ex) {
+            cleanupDirectPackageIfNecessary(cleanupOnFailure, verifiedPackage);
+            throw ex;
+        }
     }
 
     @Override
@@ -405,7 +409,7 @@ public class SoftwareServiceImpl implements SoftwareService {
         packageInfo.setUpdatedBy(operatorId);
         packageInfo.setUpdatedAt(LocalDateTime.now());
         softwareCacheService.invalidateDetail(appId);
-        operationLogService.record(operatorId, "software_package_scan", "software_package", packageId, packageInfo.getFileName(), "安装包模拟扫描: " + packageInfo.getFileName());
+        operationLogPublisher.record(operatorId, "software_package_scan", "software_package", packageId, packageInfo.getFileName(), "安装包安全状态更新: " + packageInfo.getFileName());
         return softwareAssembler.toPackageResponse(packageInfo);
     }
 
@@ -433,6 +437,10 @@ public class SoftwareServiceImpl implements SoftwareService {
             .stream()
             .map(softwareAssembler::toPackageResponse)
             .toList();
+    }
+
+    private SoftwareResponse freshDetail(Long id) {
+        return softwareAssembler.toResponse(requireSoftware(id));
     }
 
     private SoftwareEntity requireSoftware(Long id) {
@@ -579,4 +587,13 @@ public class SoftwareServiceImpl implements SoftwareService {
             .toList();
     }
 
+    private boolean isDirectPackageUpload(MultipartFile packageFile, String uploadSessionId) {
+        return packageFile != null && !packageFile.isEmpty() && !StringUtils.hasText(uploadSessionId);
+    }
+
+    private void cleanupDirectPackageIfNecessary(boolean cleanupOnFailure, VerifiedPackage verifiedPackage) {
+        if (cleanupOnFailure) {
+            packagePreparationService.deleteStoredPackageQuietly(verifiedPackage);
+        }
+    }
 }

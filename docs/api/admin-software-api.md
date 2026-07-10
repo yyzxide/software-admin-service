@@ -212,7 +212,7 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/versions/2/pa
   -F packageFile=@./sample-2.0.0-arm.deb
 ```
 
-本地模拟扫描安装包：
+标记安装包安全状态：
 
 ```bash
 curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/packages/1/scan \
@@ -220,11 +220,11 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/software/apps/1/packages/1/sc
   -H "Content-Type: application/json" \
   -d '{
     "result": "safe",
-    "report": "本地模拟扫描通过"
+    "report": "内部测试确认通过"
   }'
 ```
 
-`result` 支持 `safe`、`risky`、`failed`。审核通过和上架前只允许 `safe`。
+`result` 支持 `safe`、`risky`、`failed`。审核通过和上架前只允许 `safe`。当前内部研发测试阶段用于安全状态闭环，后续可以替换为真实扫描执行器回调。
 
 查询版本和安装包：
 

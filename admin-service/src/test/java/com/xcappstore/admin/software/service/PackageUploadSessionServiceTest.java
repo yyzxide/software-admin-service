@@ -61,6 +61,14 @@ class PackageUploadSessionServiceTest {
         assertEquals(1, progress.getUploadedChunkCount());
         assertEquals(List.of(1), progress.getUploadedChunks());
 
+        PackageUploadSessionResponse duplicate = service.uploadChunk(
+            created.getUploadId(),
+            chunkRequest(1, "world"),
+            99L
+        );
+        assertEquals(1, duplicate.getUploadedChunkCount());
+        assertEquals(List.of(1), duplicate.getUploadedChunks());
+
         PackageUploadSessionResponse status = service.status(created.getUploadId(), 99L);
         assertEquals(List.of(1), status.getUploadedChunks());
 
@@ -127,6 +135,20 @@ class PackageUploadSessionServiceTest {
         assertEquals(false, Files.exists(tempDir.resolve("packages").resolve(".chunks").resolve(created.getUploadId())));
     }
 
+    @Test
+    void cleansExpiredCompletingSessionAndDeletesChunks() {
+        PackageUploadSessionResponse created = service.create(createRequest(), 99L);
+        service.uploadChunk(created.getUploadId(), chunkRequest(0, "hello"), 99L);
+        mapper.sessions.get(created.getUploadId()).setStatus(4);
+        mapper.sessions.get(created.getUploadId()).setUpdatedAt(LocalDateTime.now().minusDays(2));
+
+        int cleaned = service.cleanupExpiredUploadingSessions(LocalDateTime.now().minusDays(1), 100);
+
+        assertEquals(1, cleaned);
+        assertEquals(3, mapper.sessions.get(created.getUploadId()).getStatus());
+        assertEquals(false, Files.exists(tempDir.resolve("packages").resolve(".chunks").resolve(created.getUploadId())));
+    }
+
     private PackageUploadCreateRequest createRequest() {
         PackageUploadCreateRequest request = new PackageUploadCreateRequest();
         request.setFileName("editor.deb");
@@ -166,7 +188,7 @@ class PackageUploadSessionServiceTest {
         @Override
         public List<PackageUploadSessionEntity> selectExpiredUploading(LocalDateTime cutoff, int limit) {
             return sessions.values().stream()
-                .filter(session -> Integer.valueOf(0).equals(session.getStatus()))
+                .filter(session -> Integer.valueOf(0).equals(session.getStatus()) || Integer.valueOf(4).equals(session.getStatus()))
                 .filter(session -> session.getUpdatedAt().isBefore(cutoff))
                 .limit(limit)
                 .toList();
@@ -177,6 +199,17 @@ class PackageUploadSessionServiceTest {
             PackageUploadSessionEntity session = sessions.get(uploadId);
             session.setUploadedChunks(uploadedChunks);
             session.setUploadedChunkCount(uploadedChunkCount);
+            session.setUpdatedAt(LocalDateTime.now());
+            return 1;
+        }
+
+        @Override
+        public int markCompleting(String uploadId) {
+            PackageUploadSessionEntity session = sessions.get(uploadId);
+            if (session == null || !Integer.valueOf(0).equals(session.getStatus())) {
+                return 0;
+            }
+            session.setStatus(4);
             session.setUpdatedAt(LocalDateTime.now());
             return 1;
         }
@@ -193,6 +226,9 @@ class PackageUploadSessionServiceTest {
             LocalDateTime completedAt
         ) {
             PackageUploadSessionEntity session = sessions.get(uploadId);
+            if (session == null || !Integer.valueOf(4).equals(session.getStatus())) {
+                return 0;
+            }
             session.setActualSha256(actualSha256);
             session.setStoragePath(storagePath);
             session.setSignatureAlgorithm(signatureAlgorithm);
@@ -219,7 +255,7 @@ class PackageUploadSessionServiceTest {
         @Override
         public int markFailed(String uploadId, String errorMessage) {
             PackageUploadSessionEntity session = sessions.get(uploadId);
-            if (session == null || !Integer.valueOf(0).equals(session.getStatus())) {
+            if (session == null || (!Integer.valueOf(0).equals(session.getStatus()) && !Integer.valueOf(4).equals(session.getStatus()))) {
                 return 0;
             }
             session.setStatus(3);

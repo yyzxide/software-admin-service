@@ -6,8 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
-import com.xcappstore.admin.operationlog.dto.OperationLogCreateCommand;
-import com.xcappstore.admin.operationlog.service.OperationLogService;
+import com.xcappstore.admin.operationlog.service.OperationLogPublisher;
 import com.xcappstore.admin.review.dto.ReviewAssignRequest;
 import com.xcappstore.admin.review.dto.ReviewDecisionRequest;
 import com.xcappstore.admin.review.dto.ReviewTaskCreateRequest;
@@ -22,6 +21,7 @@ import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
 import com.xcappstore.admin.software.service.PackageSecurityPolicyService;
+import com.xcappstore.admin.software.service.SoftwareCacheService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,7 +44,8 @@ class ReviewServiceImplTest {
             reviewMapper,
             softwareMapper,
             new PackageSecurityPolicyService(softwareMapper),
-            new FakeOperationLogService()
+            new FakeSoftwareCacheService(),
+            new OperationLogPublisher(event -> {})
         );
     }
 
@@ -169,7 +170,7 @@ class ReviewServiceImplTest {
         );
 
         assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
-        assertEquals("安装包未通过安全扫描，不能上架: unscanned.deb", ex.getMessage());
+        assertEquals("安装包未通过安全状态校验，不能上架: unscanned.deb", ex.getMessage());
     }
 
     private SoftwareEntity app(Long id, String name, Integer status) {
@@ -233,7 +234,7 @@ class ReviewServiceImplTest {
         @Override public int updateAppMetadata(SoftwareEntity app) { return 1; }
         @Override public int deleteAppTags(Long appId) { return 1; }
         @Override public long countVersionCode(Long appId, Long versionCode) { return 0; }
-        @Override public long countPackageVariant(Long versionId, String osType, String arch) { return 0; }
+        @Override public long countPackageVariant(Long versionId, String osType, String arch, String packageFormat) { return 0; }
         @Override public int markVersionsNotLatest(Long appId, Long updatedBy) { return 1; }
         @Override public AppVersionEntity selectVersionById(Long versionId) { return versions.get(versionId); }
         @Override public List<AppVersionEntity> selectVersionsByAppId(Long appId) { return List.of(); }
@@ -251,11 +252,13 @@ class ReviewServiceImplTest {
         @Override public int rejectDraftVersions(Long appId, LocalDateTime reviewedAt, Long updatedBy) { return 1; }
     }
 
-    private static final class FakeOperationLogService implements OperationLogService {
-        @Override public com.xcappstore.admin.common.PageResponse<com.xcappstore.admin.operationlog.dto.OperationLogResponse> list(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) { return new PageResponse<>(0, 1, 20, List.of()); }
-        @Override public com.xcappstore.admin.operationlog.dto.OperationLogResponse detail(Long id) { return null; }
-        @Override public com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse options() { return new com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse(List.of(), List.of()); }
-        @Override public com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse stats(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) { return new com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse(List.of(), List.of(), List.of()); }
-        @Override public void record(OperationLogCreateCommand command) { }
+    private static final class FakeSoftwareCacheService extends SoftwareCacheService {
+        private FakeSoftwareCacheService() {
+            super(null, null);
+        }
+
+        @Override
+        public void invalidateDetail(Long id) {
+        }
     }
 }

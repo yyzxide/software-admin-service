@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS apps (
   UNIQUE KEY uk_app_key (app_key),
   KEY idx_category_status (category_id, status),
   KEY idx_status (status),
+  KEY idx_status_updated_at (status, updated_at),
   KEY idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Java后台软件主表';
 
@@ -141,6 +142,7 @@ CREATE TABLE IF NOT EXISTS app_versions (
   deleted_at     DATETIME(3) DEFAULT NULL,
   created_by     BIGINT UNSIGNED NOT NULL DEFAULT 0,
   updated_by     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_app_version_code (app_id, version_code),
   KEY idx_app_status (app_id, status),
   KEY idx_app_latest (app_id, is_latest),
   KEY idx_deleted_at (deleted_at)
@@ -155,7 +157,7 @@ CREATE TABLE IF NOT EXISTS app_packages (
   package_format  VARCHAR(16) NOT NULL COMMENT 'deb/rpm/appimage',
   file_name       VARCHAR(256) NOT NULL COMMENT '文件名',
   file_size       BIGINT UNSIGNED NOT NULL COMMENT '文件大小',
-  storage_path    VARCHAR(512) NOT NULL COMMENT '本地或对象存储路径',
+  storage_path    VARCHAR(512) NOT NULL COMMENT '安装包存储路径',
   cdn_url         VARCHAR(512) DEFAULT NULL COMMENT '下载加速地址',
   sha256          VARCHAR(128) NOT NULL COMMENT 'SHA256',
   signature_algorithm VARCHAR(64) DEFAULT NULL COMMENT '签名算法，如 sha256 或 sha256-rsa',
@@ -164,16 +166,17 @@ CREATE TABLE IF NOT EXISTS app_packages (
   signature_verified_at DATETIME(3) DEFAULT NULL COMMENT '签名校验时间',
   status          TINYINT NOT NULL DEFAULT 1 COMMENT '0=上传中 1=可用 2=已删除',
   download_count  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '下载量',
-  scan_status     TINYINT NOT NULL DEFAULT 0 COMMENT '0=未扫描 1=安全 2=有风险 3=扫描失败',
-  scan_report     TEXT DEFAULT NULL COMMENT '扫描报告',
+  scan_status     TINYINT NOT NULL DEFAULT 0 COMMENT '0=未标记安全 1=安全 2=有风险 3=处理失败',
+  scan_report     TEXT DEFAULT NULL COMMENT '安全状态说明',
   created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at      DATETIME(3) DEFAULT NULL,
   created_by      BIGINT UNSIGNED NOT NULL DEFAULT 0,
   updated_by      BIGINT UNSIGNED NOT NULL DEFAULT 0,
-  UNIQUE KEY uk_version_os_arch (version_id, os_type, arch),
+  UNIQUE KEY uk_version_os_arch_format (version_id, os_type, arch, package_format),
   KEY idx_app_id (app_id),
   KEY idx_os_arch (os_type, arch),
+  KEY idx_app_scan_status (app_id, scan_status),
   KEY idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Java后台安装包表';
 
@@ -193,13 +196,14 @@ CREATE TABLE IF NOT EXISTS package_upload_sessions (
   signature_value       VARCHAR(2048) DEFAULT NULL COMMENT '签名值或期望摘要',
   signature_status      TINYINT NOT NULL DEFAULT 0 COMMENT '0=未校验 1=通过 2=失败',
   signature_verified_at DATETIME(3) DEFAULT NULL COMMENT '签名校验时间',
-  status                TINYINT NOT NULL DEFAULT 0 COMMENT '0=上传中 1=已完成 2=已消费 3=失败',
+  status                TINYINT NOT NULL DEFAULT 0 COMMENT '0=上传中 1=已完成 2=已消费 3=失败 4=合并中',
   error_message         VARCHAR(512) DEFAULT NULL COMMENT '失败原因',
   created_by            BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '创建人',
   created_at            DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at            DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   completed_at          DATETIME(3) DEFAULT NULL,
   KEY idx_created_by_status (created_by, status),
+  KEY idx_status_updated_at (status, updated_at),
   KEY idx_updated_at (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Java后台安装包分片上传会话表';
 
@@ -302,7 +306,7 @@ INSERT IGNORE INTO admin_permissions (permission_code, permission_name, module, 
 ('software:unpublish', '下架软件', 'software', '直接下架软件'),
 ('software:version:create', '新增版本', 'software', '为软件新增版本'),
 ('software:package:create', '追加安装包', 'software', '为版本追加安装包变体'),
-('software:package:scan', '模拟扫描安装包', 'software', '更新安装包本地模拟扫描结果'),
+('software:package:scan', '安装包安全状态', 'software', '更新安装包安全状态结果'),
 ('software:upload', '分片上传', 'software', '创建和管理安装包上传会话'),
 ('review:view', '查看审核', 'review', '查看审核任务和历史'),
 ('review:submit', '提交审核', 'review', '提交软件或版本审核'),

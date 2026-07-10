@@ -44,7 +44,8 @@ public interface SoftwareMapper {
     long countPackageVariant(
         @Param("versionId") Long versionId,
         @Param("osType") String osType,
-        @Param("arch") String arch
+        @Param("arch") String arch,
+        @Param("packageFormat") String packageFormat
     );
 
     int markVersionsNotLatest(@Param("appId") Long appId, @Param("updatedBy") Long updatedBy);

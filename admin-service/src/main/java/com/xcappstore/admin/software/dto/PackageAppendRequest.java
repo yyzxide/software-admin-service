@@ -1,6 +1,7 @@
 package com.xcappstore.admin.software.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.web.multipart.MultipartFile;
 
 public class PackageAppendRequest {
@@ -14,6 +15,7 @@ public class PackageAppendRequest {
     private String packageFormat;
 
     private String uploadSessionId;
+    @Pattern(regexp = "^$|^[0-9a-fA-F]{64}$", message = "SHA256格式错误")
     private String expectedSha256;
     private String signatureAlgorithm;
     private String signatureValue;

@@ -7,8 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
 import com.xcappstore.admin.common.PageResponse;
 import com.xcappstore.admin.exception.BusinessException;
-import com.xcappstore.admin.operationlog.dto.OperationLogCreateCommand;
-import com.xcappstore.admin.operationlog.service.OperationLogService;
+import com.xcappstore.admin.operationlog.service.OperationLogPublisher;
 import com.xcappstore.admin.software.dto.AppPackageResponse;
 import com.xcappstore.admin.software.dto.AppVersionResponse;
 import com.xcappstore.admin.software.dto.PackageAppendRequest;
@@ -51,7 +50,7 @@ class SoftwareServiceImplTest {
             new PackageScanPolicyService(),
             new PackagePreparationService(new FakePackageFileStorageService(), new FakePackageUploadSessionService()),
             new SoftwareAssembler(new ObjectMapper()),
-            new FakeOperationLogService(),
+            new OperationLogPublisher(event -> {}),
             new ObjectMapper()
         );
     }
@@ -128,12 +127,12 @@ class SoftwareServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
 
         assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
-        assertEquals("安装包未通过安全扫描，不能上架: risky.deb", ex.getMessage());
+        assertEquals("安装包未通过安全状态校验，不能上架: risky.deb", ex.getMessage());
     }
 
     @Test
     void rejectsPublishWhenPackageScanIsMissing() {
-        softwareMapper.apps.put(1L, app(1L, "未扫描软件", 3));
+        softwareMapper.apps.put(1L, app(1L, "未标记安全软件", 3));
         AppPackageEntity packageInfo = new AppPackageEntity();
         packageInfo.setId(10L);
         packageInfo.setAppId(1L);
@@ -145,7 +144,7 @@ class SoftwareServiceImplTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
 
         assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
-        assertEquals("安装包未通过安全扫描，不能上架: unscanned.deb", ex.getMessage());
+        assertEquals("安装包未通过安全状态校验，不能上架: unscanned.deb", ex.getMessage());
     }
 
     @Test
@@ -363,7 +362,7 @@ class SoftwareServiceImplTest {
 
         assertEquals(1, scanResponse.getScanStatus());
         assertEquals("安全", scanResponse.getScanStatusText());
-        assertEquals("本地模拟扫描通过", softwareMapper.packages.get(10L).getScanReport());
+        assertEquals("安装包安全状态标记为通过", softwareMapper.packages.get(10L).getScanReport());
         assertEquals("已上架", publishResponse.getStatusText());
     }
 
@@ -386,7 +385,7 @@ class SoftwareServiceImplTest {
         );
 
         assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
-        assertEquals("扫描结果不能为空", ex.getMessage());
+        assertEquals("安全状态结果不能为空", ex.getMessage());
     }
 
     private SoftwareEntity app(Long id, String name, Integer status) {
@@ -523,11 +522,12 @@ class SoftwareServiceImplTest {
         }
 
         @Override
-        public long countPackageVariant(Long versionId, String osType, String arch) {
+        public long countPackageVariant(Long versionId, String osType, String arch, String packageFormat) {
             return packages.values().stream()
                 .filter(packageInfo -> versionId.equals(packageInfo.getVersionId()))
                 .filter(packageInfo -> osType.equals(packageInfo.getOsType()))
                 .filter(packageInfo -> arch.equals(packageInfo.getArch()))
+                .filter(packageInfo -> packageFormat.equals(packageInfo.getPackageFormat()))
                 .count();
         }
 
@@ -660,32 +660,6 @@ class SoftwareServiceImplTest {
                     version.setUpdatedBy(updatedBy);
                 });
             return 1;
-        }
-    }
-
-    private static final class FakeOperationLogService implements OperationLogService {
-        @Override
-        public com.xcappstore.admin.common.PageResponse<com.xcappstore.admin.operationlog.dto.OperationLogResponse> list(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) {
-            return new com.xcappstore.admin.common.PageResponse<>(0, 1, 20, List.of());
-        }
-
-        @Override
-        public com.xcappstore.admin.operationlog.dto.OperationLogResponse detail(Long id) {
-            return null;
-        }
-
-        @Override
-        public com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse options() {
-            return new com.xcappstore.admin.operationlog.dto.OperationLogOptionsResponse(List.of(), List.of());
-        }
-
-        @Override
-        public com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse stats(com.xcappstore.admin.operationlog.dto.OperationLogQueryRequest request) {
-            return new com.xcappstore.admin.operationlog.dto.OperationLogStatsResponse(List.of(), List.of(), List.of());
-        }
-
-        @Override
-        public void record(OperationLogCreateCommand command) {
         }
     }
 

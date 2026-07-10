@@ -3,6 +3,7 @@ package com.xcappstore.admin.category.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.category.dto.CategoryResponse;
+import com.xcappstore.admin.common.TransactionActions;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -51,13 +52,15 @@ public class CategoryCacheService {
     }
 
     public void invalidate() {
-        try {
-            redisTemplate.delete(TREE_ALL_KEY);
-            redisTemplate.delete(TREE_STATUS_KEY_PREFIX + "0");
-            redisTemplate.delete(TREE_STATUS_KEY_PREFIX + "1");
-        } catch (Exception ex) {
-            log.warn("Invalidate category cache failed: {}", ex.getMessage());
-        }
+        TransactionActions.afterCommit(() -> {
+            try {
+                redisTemplate.delete(TREE_ALL_KEY);
+                redisTemplate.delete(TREE_STATUS_KEY_PREFIX + "0");
+                redisTemplate.delete(TREE_STATUS_KEY_PREFIX + "1");
+            } catch (Exception ex) {
+                log.warn("Invalidate category cache failed: {}", ex.getMessage());
+            }
+        });
     }
 
     private String treeKey(Integer status) {
