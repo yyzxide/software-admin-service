@@ -136,6 +136,18 @@ class PackageUploadSessionServiceTest {
     }
 
     @Test
+    void overwritesSameSizedChunkInsteadOfTreatingItAsAlreadyUploaded() throws Exception {
+        PackageUploadSessionResponse created = service.create(createRequest(), 99L);
+        service.uploadChunk(created.getUploadId(), chunkRequest(0, "hello"), 99L);
+
+        service.uploadChunk(created.getUploadId(), chunkRequest(0, "HELLO"), 99L);
+
+        Path chunkPath = tempDir.resolve("packages").resolve(".chunks")
+            .resolve(created.getUploadId()).resolve("0.part");
+        assertEquals("HELLO", Files.readString(chunkPath));
+    }
+
+    @Test
     void cleansExpiredCompletingSessionAndDeletesChunks() {
         PackageUploadSessionResponse created = service.create(createRequest(), 99L);
         service.uploadChunk(created.getUploadId(), chunkRequest(0, "hello"), 99L);
@@ -147,6 +159,20 @@ class PackageUploadSessionServiceTest {
         assertEquals(1, cleaned);
         assertEquals(3, mapper.sessions.get(created.getUploadId()).getStatus());
         assertEquals(false, Files.exists(tempDir.resolve("packages").resolve(".chunks").resolve(created.getUploadId())));
+    }
+
+    @Test
+    void doesNotDeleteSessionThatBecameActiveDuringCleanupSelection() {
+        PackageUploadSessionResponse created = service.create(createRequest(), 99L);
+        service.uploadChunk(created.getUploadId(), chunkRequest(0, "hello"), 99L);
+        mapper.sessions.get(created.getUploadId()).setUpdatedAt(LocalDateTime.now().minusDays(2));
+        mapper.touchExpiredOnSelect = true;
+
+        int cleaned = service.cleanupExpiredUploadingSessions(LocalDateTime.now().minusDays(1), 100);
+
+        assertEquals(0, cleaned);
+        assertEquals(0, mapper.sessions.get(created.getUploadId()).getStatus());
+        assertTrue(Files.exists(tempDir.resolve("packages").resolve(".chunks").resolve(created.getUploadId())));
     }
 
     private PackageUploadCreateRequest createRequest() {
@@ -173,6 +199,7 @@ class PackageUploadSessionServiceTest {
 
     private static final class FakePackageUploadSessionMapper implements PackageUploadSessionMapper {
         private final Map<String, PackageUploadSessionEntity> sessions = new LinkedHashMap<>();
+        private boolean touchExpiredOnSelect;
 
         @Override
         public int insert(PackageUploadSessionEntity entity) {
@@ -186,12 +213,21 @@ class PackageUploadSessionServiceTest {
         }
 
         @Override
+        public PackageUploadSessionEntity selectByUploadIdForUpdate(String uploadId) {
+            return sessions.get(uploadId);
+        }
+
+        @Override
         public List<PackageUploadSessionEntity> selectExpiredUploading(LocalDateTime cutoff, int limit) {
-            return sessions.values().stream()
+            List<PackageUploadSessionEntity> selected = sessions.values().stream()
                 .filter(session -> Integer.valueOf(0).equals(session.getStatus()) || Integer.valueOf(4).equals(session.getStatus()))
                 .filter(session -> session.getUpdatedAt().isBefore(cutoff))
                 .limit(limit)
                 .toList();
+            if (touchExpiredOnSelect) {
+                selected.forEach(session -> session.setUpdatedAt(LocalDateTime.now()));
+            }
+            return selected;
         }
 
         @Override
@@ -256,6 +292,20 @@ class PackageUploadSessionServiceTest {
         public int markFailed(String uploadId, String errorMessage) {
             PackageUploadSessionEntity session = sessions.get(uploadId);
             if (session == null || (!Integer.valueOf(0).equals(session.getStatus()) && !Integer.valueOf(4).equals(session.getStatus()))) {
+                return 0;
+            }
+            session.setStatus(3);
+            session.setErrorMessage(errorMessage);
+            session.setUpdatedAt(LocalDateTime.now());
+            return 1;
+        }
+
+        @Override
+        public int markExpiredFailed(String uploadId, LocalDateTime cutoff, String errorMessage) {
+            PackageUploadSessionEntity session = sessions.get(uploadId);
+            if (session == null
+                || (!Integer.valueOf(0).equals(session.getStatus()) && !Integer.valueOf(4).equals(session.getStatus()))
+                || !session.getUpdatedAt().isBefore(cutoff)) {
                 return 0;
             }
             session.setStatus(3);

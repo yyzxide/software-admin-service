@@ -3,6 +3,7 @@ package com.xcappstore.admin.software.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xcappstore.admin.common.ErrorCode;
+import com.xcappstore.admin.common.TransactionActions;
 import com.xcappstore.admin.exception.BusinessException;
 import com.xcappstore.admin.software.dto.PackageUploadChunkRequest;
 import com.xcappstore.admin.software.dto.PackageUploadCreateRequest;
@@ -89,7 +90,7 @@ public class PackageUploadSessionService {
 
     @Transactional
     public PackageUploadSessionResponse uploadChunk(String uploadId, PackageUploadChunkRequest request, Long adminUserId) {
-        PackageUploadSessionEntity session = requireUploadingSession(uploadId, adminUserId);
+        PackageUploadSessionEntity session = requireUploadingSessionForUpdate(uploadId, adminUserId);
         if (request.getChunkIndex() == null) {
             throw new BusinessException(ErrorCode.PARAM_FORMAT, "分片序号不能为空");
         }
@@ -220,8 +221,11 @@ public class PackageUploadSessionService {
         List<PackageUploadSessionEntity> expiredSessions = mapper.selectExpiredUploading(cutoff, normalizedLimit);
         int cleaned = 0;
         for (PackageUploadSessionEntity session : expiredSessions) {
-            deleteChunkDir(session.getUploadId());
-            cleaned += mapper.markFailed(session.getUploadId(), "上传会话已过期，临时分片已清理");
+            int affected = mapper.markExpiredFailed(session.getUploadId(), cutoff, "上传会话已过期，临时分片已清理");
+            if (affected > 0) {
+                cleaned += affected;
+                TransactionActions.afterCommit(() -> deleteChunkDir(session.getUploadId()));
+            }
         }
         return cleaned;
     }
@@ -274,6 +278,24 @@ public class PackageUploadSessionService {
         return session;
     }
 
+    private PackageUploadSessionEntity requireUploadingSessionForUpdate(String uploadId, Long adminUserId) {
+        if (!StringUtils.hasText(uploadId)) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "上传会话ID不能为空");
+        }
+        PackageUploadSessionEntity session = mapper.selectByUploadIdForUpdate(uploadId);
+        if (session == null) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "上传会话不存在");
+        }
+        Long operatorId = normalizeAdminUserId(adminUserId);
+        if (session.getCreatedBy() != null && session.getCreatedBy() > 0 && !session.getCreatedBy().equals(operatorId)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "无权访问该上传会话");
+        }
+        if (!UploadSessionStatus.fromCode(session.getStatus()).isUploading()) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "上传会话不在上传中状态");
+        }
+        return session;
+    }
+
     private int safeTotalChunks(long fileSize, long chunkSize) {
         long total = (fileSize + chunkSize - 1) / chunkSize;
         if (total > Integer.MAX_VALUE) {
@@ -302,9 +324,6 @@ public class PackageUploadSessionService {
     private void storeChunkFile(PackageUploadChunkRequest request, Path chunkPath) {
         try {
             Files.createDirectories(chunkPath.getParent());
-            if (Files.isRegularFile(chunkPath) && Files.size(chunkPath) == request.getChunkFile().getSize()) {
-                return;
-            }
             Path tempPath = chunkPath.resolveSibling(chunkPath.getFileName() + "." + UUID.randomUUID() + ".tmp");
             try {
                 try (InputStream input = request.getChunkFile().getInputStream()) {

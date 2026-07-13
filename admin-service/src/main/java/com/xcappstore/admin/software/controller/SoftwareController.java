@@ -11,7 +11,6 @@ import com.xcappstore.admin.software.dto.PackageAppendRequest;
 import com.xcappstore.admin.software.dto.PackageScanRequest;
 import com.xcappstore.admin.software.dto.SoftwareQueryRequest;
 import com.xcappstore.admin.software.dto.SoftwareResponse;
-import com.xcappstore.admin.software.dto.SoftwareStatusChangeRequest;
 import com.xcappstore.admin.software.dto.SoftwareUpdateRequest;
 import com.xcappstore.admin.software.dto.SoftwareUploadRequest;
 import com.xcappstore.admin.software.dto.VersionCreateRequest;
@@ -74,7 +73,6 @@ public class SoftwareController {
     @RequirePermission("software:publish")
     public ApiResponse<SoftwareResponse> publish(
         @PathVariable Long id,
-        @Valid @RequestBody(required = false) SoftwareStatusChangeRequest request,
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(softwareService.publish(id, adminUserId(servletRequest)));
@@ -84,7 +82,6 @@ public class SoftwareController {
     @RequirePermission("software:unpublish")
     public ApiResponse<SoftwareResponse> unpublish(
         @PathVariable Long id,
-        @Valid @RequestBody(required = false) SoftwareStatusChangeRequest request,
         HttpServletRequest servletRequest
     ) {
         return ApiResponse.success(softwareService.unpublish(id, adminUserId(servletRequest)));

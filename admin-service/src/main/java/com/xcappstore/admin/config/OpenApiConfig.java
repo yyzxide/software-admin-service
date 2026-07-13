@@ -35,7 +35,7 @@ public class OpenApiConfig {
                 .name(BEARER_AUTH)
                 .type(SecurityScheme.Type.HTTP)
                 .scheme("bearer")
-                .bearerFormat("HMAC Token")))
+                .bearerFormat("JWT")))
             .addSecurityItem(new SecurityRequirement().addList(BEARER_AUTH));
     }
 }

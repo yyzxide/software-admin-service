@@ -51,6 +51,42 @@ class OperationLogServiceImplTest {
     }
 
     @Test
+    void normalizesInclusiveEndDateToExclusiveNextDay() {
+        OperationLogService service = new OperationLogServiceImpl(new FakeOperationLogMapper(), new ObjectMapper());
+        OperationLogQueryRequest request = new OperationLogQueryRequest();
+        request.setEndTime("2026-07-10");
+
+        service.list(request);
+
+        assertEquals("2026-07-11 00:00:00", request.getEndTime());
+    }
+
+    @Test
+    void rejectsReversedTimeRange() {
+        OperationLogService service = new OperationLogServiceImpl(new FakeOperationLogMapper(), new ObjectMapper());
+        OperationLogQueryRequest request = new OperationLogQueryRequest();
+        request.setStartTime("2026-07-11 00:00:00");
+        request.setEndTime("2026-07-10 23:59:59");
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.list(request));
+
+        assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
+        assertEquals("开始时间不能晚于结束时间", ex.getMessage());
+    }
+
+    @Test
+    void rejectsOverflowingEndDate() {
+        OperationLogService service = new OperationLogServiceImpl(new FakeOperationLogMapper(), new ObjectMapper());
+        OperationLogQueryRequest request = new OperationLogQueryRequest();
+        request.setEndTime("9999-12-31");
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.list(request));
+
+        assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
+        assertEquals("结束时间格式错误", ex.getMessage());
+    }
+
+    @Test
     void returnsPagedOperationLogs() {
         FakeOperationLogMapper mapper = new FakeOperationLogMapper();
         OperationLogEntity entity = new OperationLogEntity();

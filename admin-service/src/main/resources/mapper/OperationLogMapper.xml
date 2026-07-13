@@ -50,7 +50,7 @@
                 AND created_at &gt;= #{query.startTime}
             </if>
             <if test="query.endTime != null and query.endTime != ''">
-                AND created_at &lt;= #{query.endTime}
+                AND created_at &lt; #{query.endTime}
             </if>
         </where>
     </sql>

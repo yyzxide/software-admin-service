@@ -244,7 +244,11 @@ public class SoftwareServiceImpl implements SoftwareService {
     @Transactional
     public SoftwareResponse publish(Long id, Long adminUserId) {
         SoftwareEntity app = requireSoftware(id);
-        if (!SoftwareStatus.fromCode(app.getStatus()).canPublish()) {
+        SoftwareStatus status = SoftwareStatus.fromCode(app.getStatus());
+        if (status == SoftwareStatus.PUBLISHED) {
+            return freshDetail(id);
+        }
+        if (!status.canPublish()) {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "软件需审核通过后才能上架");
         }
 
@@ -262,7 +266,11 @@ public class SoftwareServiceImpl implements SoftwareService {
     @Transactional
     public SoftwareResponse unpublish(Long id, Long adminUserId) {
         SoftwareEntity app = requireSoftware(id);
-        if (!SoftwareStatus.fromCode(app.getStatus()).canUnpublish()) {
+        SoftwareStatus status = SoftwareStatus.fromCode(app.getStatus());
+        if (status == SoftwareStatus.UNPUBLISHED) {
+            return freshDetail(id);
+        }
+        if (!status.canUnpublish()) {
             throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "当前状态不允许下架");
         }
 

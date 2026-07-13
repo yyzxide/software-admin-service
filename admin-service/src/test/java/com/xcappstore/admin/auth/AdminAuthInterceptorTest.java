@@ -77,7 +77,13 @@ class AdminAuthInterceptorTest {
     }
 
     private AdminTokenService tokenService() {
-        return new AdminTokenService(new FakeRbacMapper(), new PasswordHashService(), "test-secret", 7200L, "test");
+        return new AdminTokenService(
+            new FakeRbacMapper(),
+            new PasswordHashService(),
+            "test-secret-at-least-32-bytes-long",
+            7200L,
+            "test"
+        );
     }
 
     private static final class SecuredController {

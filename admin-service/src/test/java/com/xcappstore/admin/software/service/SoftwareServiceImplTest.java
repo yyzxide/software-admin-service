@@ -93,6 +93,7 @@ class SoftwareServiceImplTest {
     @Test
     void publishesApprovedUnpublishedSoftware() {
         softwareMapper.apps.put(1L, app(1L, "待上架软件", 3));
+        softwareMapper.packages.put(10L, publishablePackage(10L, 1L, 1L));
 
         SoftwareResponse response = softwareService.publish(1L, 99L);
 
@@ -101,6 +102,36 @@ class SoftwareServiceImplTest {
         assertEquals(0, softwareMapper.approvedVersionCount);
         assertEquals("已上架", response.getStatusText());
         assertEquals(1, softwareCacheService.invalidateCount);
+    }
+
+    @Test
+    void publishingPublishedSoftwareIsIdempotent() {
+        SoftwareEntity app = app(1L, "已上架软件", 2);
+        LocalDateTime publishedAt = LocalDateTime.of(2026, 7, 1, 10, 0);
+        app.setPublishedAt(publishedAt);
+        softwareMapper.apps.put(1L, app);
+
+        SoftwareResponse response = softwareService.publish(1L, 99L);
+
+        assertEquals(2, response.getStatus());
+        assertEquals(publishedAt, softwareMapper.apps.get(1L).getPublishedAt());
+        assertEquals(0, softwareMapper.updateStatusCount);
+        assertEquals(0, softwareCacheService.invalidateCount);
+    }
+
+    @Test
+    void unpublishingUnpublishedSoftwareIsIdempotent() {
+        SoftwareEntity app = app(1L, "已下架软件", 3);
+        LocalDateTime publishedAt = LocalDateTime.of(2026, 7, 1, 10, 0);
+        app.setPublishedAt(publishedAt);
+        softwareMapper.apps.put(1L, app);
+
+        SoftwareResponse response = softwareService.unpublish(1L, 99L);
+
+        assertEquals(3, response.getStatus());
+        assertEquals(publishedAt, softwareMapper.apps.get(1L).getPublishedAt());
+        assertEquals(0, softwareMapper.updateStatusCount);
+        assertEquals(0, softwareCacheService.invalidateCount);
     }
 
     @Test
@@ -121,6 +152,7 @@ class SoftwareServiceImplTest {
         packageInfo.setAppId(1L);
         packageInfo.setVersionId(1L);
         packageInfo.setFileName("risky.deb");
+        packageInfo.setStatus(1);
         packageInfo.setScanStatus(2);
         softwareMapper.packages.put(10L, packageInfo);
 
@@ -138,6 +170,7 @@ class SoftwareServiceImplTest {
         packageInfo.setAppId(1L);
         packageInfo.setVersionId(1L);
         packageInfo.setFileName("unscanned.deb");
+        packageInfo.setStatus(1);
         packageInfo.setScanStatus(0);
         softwareMapper.packages.put(10L, packageInfo);
 
@@ -352,6 +385,7 @@ class SoftwareServiceImplTest {
         packageInfo.setAppId(1L);
         packageInfo.setVersionId(1L);
         packageInfo.setFileName("safe.deb");
+        packageInfo.setStatus(1);
         packageInfo.setScanStatus(0);
         softwareMapper.packages.put(10L, packageInfo);
         PackageScanRequest scanRequest = new PackageScanRequest();
@@ -416,6 +450,18 @@ class SoftwareServiceImplTest {
         return app;
     }
 
+    private AppPackageEntity publishablePackage(Long id, Long appId, Long versionId) {
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(id);
+        packageInfo.setAppId(appId);
+        packageInfo.setVersionId(versionId);
+        packageInfo.setFileName("safe.deb");
+        packageInfo.setStatus(1);
+        packageInfo.setSignatureStatus(1);
+        packageInfo.setScanStatus(1);
+        return packageInfo;
+    }
+
     private static final class FakeSoftwareMapper implements SoftwareMapper {
         private final Map<Long, SoftwareEntity> apps = new HashMap<>();
         private final Map<Long, AppVersionEntity> versions = new HashMap<>();
@@ -429,6 +475,7 @@ class SoftwareServiceImplTest {
         private int appTagCount;
         private int deletedAppTagCount;
         private int markNotLatestCount;
+        private int updateStatusCount;
 
         @Override
         public long countByAppKey(String appKey) {
@@ -585,6 +632,7 @@ class SoftwareServiceImplTest {
             app.setStatus(status);
             app.setPublishedAt(publishedAt);
             app.setUpdatedBy(updatedBy);
+            updateStatusCount++;
             return 1;
         }
 

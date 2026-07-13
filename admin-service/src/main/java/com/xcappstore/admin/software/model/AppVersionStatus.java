@@ -26,6 +26,10 @@ public enum AppVersionStatus {
         return text;
     }
 
+    public boolean canSubmitReview() {
+        return this == DRAFT || this == REJECTED || this == UNPUBLISHED;
+    }
+
     public static AppVersionStatus fromCode(Integer code) {
         if (code == null) {
             return UNKNOWN;

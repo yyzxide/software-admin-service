@@ -16,10 +16,10 @@ import com.xcappstore.admin.operationlog.entity.OperationLogEntity;
 import com.xcappstore.admin.operationlog.mapper.OperationLogMapper;
 import com.xcappstore.admin.operationlog.service.OperationLogService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,11 +106,18 @@ public class OperationLogServiceImpl implements OperationLogService {
     }
 
     private void normalizeQuery(OperationLogQueryRequest request) {
+        LocalDateTime startTime = null;
+        LocalDateTime endTimeExclusive = null;
         if (StringUtils.hasText(request.getStartTime())) {
-            request.setStartTime(parseStartTime(request.getStartTime()).format(DATE_TIME_FORMATTER));
+            startTime = parseStartTime(request.getStartTime());
+            request.setStartTime(startTime.format(DATE_TIME_FORMATTER));
         }
         if (StringUtils.hasText(request.getEndTime())) {
-            request.setEndTime(parseEndTime(request.getEndTime()).format(DATE_TIME_FORMATTER));
+            endTimeExclusive = parseEndTimeExclusive(request.getEndTime());
+            request.setEndTime(endTimeExclusive.format(DATE_TIME_FORMATTER));
+        }
+        if (startTime != null && endTimeExclusive != null && !startTime.isBefore(endTimeExclusive)) {
+            throw new BusinessException(ErrorCode.PARAM_FORMAT, "开始时间不能晚于结束时间");
         }
     }
 
@@ -118,24 +125,31 @@ public class OperationLogServiceImpl implements OperationLogService {
         String trimmed = value.trim();
         try {
             if (trimmed.length() == 10) {
-                return LocalDate.parse(trimmed, DATE_FORMATTER).atStartOfDay();
+                return requireMySqlDateTime(LocalDate.parse(trimmed, DATE_FORMATTER).atStartOfDay());
             }
-            return LocalDateTime.parse(trimmed, DATE_TIME_FORMATTER);
-        } catch (DateTimeParseException ex) {
+            return requireMySqlDateTime(LocalDateTime.parse(trimmed, DATE_TIME_FORMATTER));
+        } catch (DateTimeException ex) {
             throw new BusinessException(ErrorCode.PARAM_FORMAT, "开始时间格式错误");
         }
     }
 
-    private LocalDateTime parseEndTime(String value) {
+    private LocalDateTime parseEndTimeExclusive(String value) {
         String trimmed = value.trim();
         try {
             if (trimmed.length() == 10) {
-                return LocalDate.parse(trimmed, DATE_FORMATTER).atTime(23, 59, 59);
+                return requireMySqlDateTime(LocalDate.parse(trimmed, DATE_FORMATTER).plusDays(1).atStartOfDay());
             }
-            return LocalDateTime.parse(trimmed, DATE_TIME_FORMATTER);
-        } catch (DateTimeParseException ex) {
+            return requireMySqlDateTime(LocalDateTime.parse(trimmed, DATE_TIME_FORMATTER).plusSeconds(1));
+        } catch (DateTimeException ex) {
             throw new BusinessException(ErrorCode.PARAM_FORMAT, "结束时间格式错误");
         }
+    }
+
+    private LocalDateTime requireMySqlDateTime(LocalDateTime value) {
+        if (value.getYear() < 1000 || value.getYear() > 9999) {
+            throw new DateTimeException("time is outside MySQL DATETIME range");
+        }
+        return value;
     }
 
     private OperationLogResponse toResponse(OperationLogEntity entity) {

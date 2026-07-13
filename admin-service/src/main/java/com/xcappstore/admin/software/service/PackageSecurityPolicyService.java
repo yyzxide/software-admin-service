@@ -6,6 +6,7 @@ import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
 import com.xcappstore.admin.software.model.PackageScanStatus;
 import com.xcappstore.admin.software.model.SignatureStatus;
+import com.xcappstore.admin.software.model.PackageStatus;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -30,7 +31,16 @@ public class PackageSecurityPolicyService {
     }
 
     protected void assertPackagesPublishable(List<AppPackageEntity> packages) {
+        if (packages == null || packages.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_FLOW, "没有可发布的安装包");
+        }
         for (AppPackageEntity packageInfo : packages) {
+            if (PackageStatus.AVAILABLE != PackageStatus.fromCode(packageInfo.getStatus())) {
+                throw new BusinessException(
+                    ErrorCode.INVALID_STATUS_FLOW,
+                    "安装包状态不可用，不能上架: " + packageInfo.getFileName()
+                );
+            }
             if (SignatureStatus.FAILED == SignatureStatus.fromCode(packageInfo.getSignatureStatus())) {
                 throw new BusinessException(
                     ErrorCode.INVALID_STATUS_FLOW,

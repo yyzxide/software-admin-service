@@ -12,6 +12,8 @@ public interface PackageUploadSessionMapper {
 
     PackageUploadSessionEntity selectByUploadId(@Param("uploadId") String uploadId);
 
+    PackageUploadSessionEntity selectByUploadIdForUpdate(@Param("uploadId") String uploadId);
+
     List<PackageUploadSessionEntity> selectExpiredUploading(
         @Param("cutoff") LocalDateTime cutoff,
         @Param("limit") int limit
@@ -39,4 +41,10 @@ public interface PackageUploadSessionMapper {
     int markConsumed(@Param("uploadId") String uploadId);
 
     int markFailed(@Param("uploadId") String uploadId, @Param("errorMessage") String errorMessage);
+
+    int markExpiredFailed(
+        @Param("uploadId") String uploadId,
+        @Param("cutoff") LocalDateTime cutoff,
+        @Param("errorMessage") String errorMessage
+    );
 }

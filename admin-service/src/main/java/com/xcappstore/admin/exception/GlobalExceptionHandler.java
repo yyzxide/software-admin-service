@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
@@ -61,6 +62,12 @@ public class GlobalExceptionHandler {
         Throwable root = NestedExceptionUtils.getMostSpecificCause(ex);
         log.error("Admin service database error: {}", root.getMessage(), ex);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR, "数据库表结构或SQL执行异常，请查看后端日志");
+    }
+
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateKey(DuplicateKeyException ex) {
+        log.warn("Admin service duplicate resource: {}", NestedExceptionUtils.getMostSpecificCause(ex).getMessage());
+        return error(HttpStatus.CONFLICT, ErrorCode.DUPLICATE_RESOURCE, "资源已存在或状态冲突");
     }
 
     @ExceptionHandler(Exception.class)

@@ -27,11 +27,11 @@ public enum SoftwareStatus {
     }
 
     public boolean canPublish() {
-        return this == PUBLISHED || this == UNPUBLISHED;
+        return this == UNPUBLISHED;
     }
 
     public boolean canUnpublish() {
-        return this == REVIEWING || this == PUBLISHED || this == REJECTED;
+        return this == PUBLISHED;
     }
 
     public boolean canSubmitReview() {

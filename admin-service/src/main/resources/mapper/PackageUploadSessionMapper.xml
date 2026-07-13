@@ -51,6 +51,18 @@
         LIMIT 1
     </select>
 
+    <select id="selectByUploadIdForUpdate" resultMap="PackageUploadSessionResultMap">
+        SELECT upload_id, file_name, package_format, file_size, chunk_size, total_chunks,
+               uploaded_chunk_count, uploaded_chunks, expected_sha256, actual_sha256,
+               storage_path, signature_algorithm, signature_value, signature_status,
+               signature_verified_at, status, error_message, created_by, created_at,
+               updated_at, completed_at
+        FROM package_upload_sessions
+        WHERE upload_id = #{uploadId}
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
     <select id="selectExpiredUploading" resultMap="PackageUploadSessionResultMap">
         SELECT upload_id, file_name, package_format, file_size, chunk_size, total_chunks,
                uploaded_chunk_count, uploaded_chunks, expected_sha256, actual_sha256,
@@ -112,5 +124,15 @@
             updated_at = NOW(3)
         WHERE upload_id = #{uploadId}
           AND status IN (0, 4)
+    </update>
+
+    <update id="markExpiredFailed">
+        UPDATE package_upload_sessions
+        SET status = 3,
+            error_message = #{errorMessage},
+            updated_at = NOW(3)
+        WHERE upload_id = #{uploadId}
+          AND status IN (0, 4)
+          AND updated_at &lt; #{cutoff}
     </update>
 </mapper>

@@ -10,7 +10,8 @@
 4. [干净环境克隆和运行指南](runbook/clone-and-run.md)
 5. [后台接口示例](api/admin-software-api.md)
 6. [面试讲解稿](interview/interview-guide.md)
-7. [简历写法和面试表达](interview/resume-bullets.md)
+7. [后端面试知识地图](interview/backend-study-guide.md)
+8. [简历写法和面试表达](interview/resume-bullets.md)
 
 ## 文档分组
 
@@ -41,6 +42,7 @@
 ### Interview：面试材料
 
 - [面试讲解稿](interview/interview-guide.md)：按问题组织的项目讲法。
+- [后端面试知识地图](interview/backend-study-guide.md)：从项目代码反推 Java、Spring、MySQL、Redis、并发、上传与测试知识。
 - [简历写法和面试表达](interview/resume-bullets.md)：简历 bullet 和边界话术。
 
 ## 维护规则

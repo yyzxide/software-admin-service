@@ -16,6 +16,8 @@ public interface ReviewMapper {
 
     long countActiveTask(@Param("appId") Long appId, @Param("versionId") Long versionId);
 
+    long countEligibleReviewer(@Param("userId") Long userId);
+
     long count(@Param("query") ReviewTaskQueryRequest query);
 
     List<ReviewTaskEntity> selectPage(

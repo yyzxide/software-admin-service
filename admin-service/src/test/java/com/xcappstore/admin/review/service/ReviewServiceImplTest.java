@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
@@ -66,6 +67,7 @@ class ReviewServiceImplTest {
     @Test
     void approvesReviewTaskAndPublishesSoftware() {
         softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
+        softwareMapper.packages.put(10L, safePackage(10L, 1L, 1L));
         reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
         ReviewDecisionRequest request = new ReviewDecisionRequest();
         request.setComment("通过");
@@ -85,6 +87,8 @@ class ReviewServiceImplTest {
         packageInfo.setAppId(1L);
         packageInfo.setVersionId(1L);
         packageInfo.setFileName("bad-signature.deb");
+        packageInfo.setStatus(1);
+        packageInfo.setScanStatus(1);
         packageInfo.setSignatureStatus(2);
         softwareMapper.packages.put(10L, packageInfo);
         reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
@@ -111,6 +115,7 @@ class ReviewServiceImplTest {
     @Test
     void rejectsConcurrentReviewDecisionWhenConditionalUpdateAffectsNoRows() {
         softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
+        softwareMapper.packages.put(10L, safePackage(10L, 1L, 1L));
         reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
         reviewMapper.finishAffectedRows = 0;
 
@@ -160,6 +165,7 @@ class ReviewServiceImplTest {
         packageInfo.setAppId(1L);
         packageInfo.setVersionId(1L);
         packageInfo.setFileName("unscanned.deb");
+        packageInfo.setStatus(1);
         packageInfo.setScanStatus(0);
         softwareMapper.packages.put(10L, packageInfo);
         reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
@@ -171,6 +177,98 @@ class ReviewServiceImplTest {
 
         assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
         assertEquals("安装包未通过安全状态校验，不能上架: unscanned.deb", ex.getMessage());
+    }
+
+    @Test
+    void rejectsApprovedVersionSubmission() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 2));
+        AppVersionEntity version = version(10L, 1L, 2);
+        softwareMapper.versions.put(10L, version);
+        ReviewTaskCreateRequest request = new ReviewTaskCreateRequest();
+        request.setAppId(1L);
+        request.setVersionId(10L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> reviewService.create(request, 99L));
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("当前版本状态不允许提交审核", ex.getMessage());
+    }
+
+    @Test
+    void rejectingNewVersionDoesNotRejectPublishedApp() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 2));
+        softwareMapper.versions.put(10L, version(10L, 1L, 1));
+        reviewMapper.tasks.put(1L, task(1L, 1L, 10L, 1));
+
+        reviewService.reject(1L, new ReviewDecisionRequest(), 88L);
+
+        assertEquals(2, softwareMapper.apps.get(1L).getStatus());
+        assertEquals(3, softwareMapper.versions.get(10L).getStatus());
+    }
+
+    @Test
+    void rejectsDisabledOrMissingReviewerAssignment() {
+        reviewMapper.tasks.put(1L, task(1L, 1L, null, 0));
+        ReviewAssignRequest request = new ReviewAssignRequest();
+        request.setReviewerId(404L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> reviewService.assign(1L, request, 99L));
+
+        assertEquals(ErrorCode.PARAM_FORMAT, ex.getCode());
+        assertEquals("审核人不存在、已禁用或缺少审核权限", ex.getMessage());
+    }
+
+    @Test
+    void assignedReviewCannotBeDecidedByAnotherReviewer() {
+        softwareMapper.apps.put(1L, app(1L, "文本编辑器", 1));
+        softwareMapper.packages.put(10L, safePackage(10L, 1L, 1L));
+        ReviewTaskEntity assignedTask = task(1L, 1L, null, 1);
+        assignedTask.setReviewerId(99L);
+        reviewMapper.tasks.put(1L, assignedTask);
+
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> reviewService.approve(1L, new ReviewDecisionRequest(), 88L)
+        );
+
+        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getCode());
+        assertEquals("审核任务已分配给其他审核人", ex.getMessage());
+        assertEquals(1, reviewMapper.tasks.get(1L).getStatus());
+    }
+
+    @Test
+    void rejectsApprovalWithoutAnyPackage() {
+        softwareMapper.apps.put(1L, app(1L, "空包软件", 1));
+        reviewMapper.tasks.put(1L, task(1L, 1L, null, 1));
+
+        BusinessException ex = assertThrows(
+            BusinessException.class,
+            () -> reviewService.approve(1L, new ReviewDecisionRequest(), 88L)
+        );
+
+        assertEquals(ErrorCode.INVALID_STATUS_FLOW, ex.getCode());
+        assertEquals("没有可发布的安装包", ex.getMessage());
+    }
+
+    private AppPackageEntity safePackage(Long id, Long appId, Long versionId) {
+        AppPackageEntity packageInfo = new AppPackageEntity();
+        packageInfo.setId(id);
+        packageInfo.setAppId(appId);
+        packageInfo.setVersionId(versionId);
+        packageInfo.setFileName("safe.deb");
+        packageInfo.setStatus(1);
+        packageInfo.setSignatureStatus(1);
+        packageInfo.setScanStatus(1);
+        return packageInfo;
+    }
+
+    private AppVersionEntity version(Long id, Long appId, Integer status) {
+        AppVersionEntity version = new AppVersionEntity();
+        version.setId(id);
+        version.setAppId(appId);
+        version.setVersionName("2.0.0");
+        version.setStatus(status);
+        return version;
     }
 
     private SoftwareEntity app(Long id, String name, Integer status) {
@@ -203,10 +301,12 @@ class ReviewServiceImplTest {
         private long nextHistoryId = 1L;
         private int finishAffectedRows = 1;
         private boolean duplicateOnInsert;
+        private final Set<Long> eligibleReviewers = Set.of(88L, 99L);
 
         @Override public int insertTask(ReviewTaskEntity task) { if (duplicateOnInsert) { throw new DuplicateKeyException("duplicate active review task"); } task.setId(nextTaskId++); tasks.put(task.getId(), task); return 1; }
         @Override public int insertHistory(ReviewHistoryEntity history) { history.setId(nextHistoryId++); histories.add(history); return 1; }
         @Override public long countActiveTask(Long appId, Long versionId) { return 0; }
+        @Override public long countEligibleReviewer(Long userId) { return eligibleReviewers.contains(userId) ? 1 : 0; }
         @Override public long count(com.xcappstore.admin.review.dto.ReviewTaskQueryRequest query) { return tasks.size(); }
         @Override public List<ReviewTaskEntity> selectPage(com.xcappstore.admin.review.dto.ReviewTaskQueryRequest query, int offset, int limit) { return tasks.values().stream().toList(); }
         @Override public ReviewTaskEntity selectById(Long id) { return tasks.get(id); }
@@ -244,11 +344,11 @@ class ReviewServiceImplTest {
         @Override public int updateStatus(Long id, Integer status, LocalDateTime publishedAt, Long updatedBy) { SoftwareEntity app = apps.get(id); app.setStatus(status); app.setPublishedAt(publishedAt); app.setUpdatedBy(updatedBy); return 1; }
         @Override public int approveDraftVersions(Long appId, LocalDateTime reviewedAt, LocalDateTime publishedAt, Long updatedBy) { approvedDraftVersions++; return 1; }
         @Override public int updateAppReviewing(Long id, Long updatedBy) { apps.get(id).setStatus(1); return 1; }
-        @Override public int updateVersionReviewing(Long versionId, Long updatedBy) { return 1; }
+        @Override public int updateVersionReviewing(Long versionId, Long updatedBy) { AppVersionEntity version = versions.get(versionId); version.setStatus(1); version.setUpdatedBy(updatedBy); return 1; }
         @Override public int updateDraftVersionsReviewing(Long appId, Long updatedBy) { return 1; }
         @Override public int approveVersion(Long versionId, LocalDateTime reviewedAt, LocalDateTime publishedAt, Long updatedBy) { return 1; }
         @Override public int rejectAppReview(Long id, LocalDateTime rejectedAt, Long updatedBy) { apps.get(id).setStatus(4); return 1; }
-        @Override public int rejectVersion(Long versionId, LocalDateTime reviewedAt, Long updatedBy) { return 1; }
+        @Override public int rejectVersion(Long versionId, LocalDateTime reviewedAt, Long updatedBy) { AppVersionEntity version = versions.get(versionId); version.setStatus(3); version.setReviewedAt(reviewedAt); version.setUpdatedBy(updatedBy); return 1; }
         @Override public int rejectDraftVersions(Long appId, LocalDateTime reviewedAt, Long updatedBy) { return 1; }
     }
 

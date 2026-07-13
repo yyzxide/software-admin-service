@@ -256,6 +256,8 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/reviews \
   -d '{"app_id":1,"version_id":2,"reason":"新版本发布","priority":2}'
 ```
 
+版本级提审只把目标版本置为审核中，不修改已上架软件的当前状态；版本级驳回也只驳回目标版本。
+
 查询审核任务：
 
 ```bash
@@ -271,6 +273,8 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/reviews/1/assign \
   -H 'Content-Type: application/json' \
   -d '{"reviewer_id":2}'
 ```
+
+`reviewer_id` 必须对应启用的管理员，并且其有效角色同时具备 `review:approve` 与 `review:reject`（或 `review:*` / `*`）权限。任务分配后，仅该审核人可以通过或驳回。
 
 审核通过：
 
@@ -298,6 +302,15 @@ curl -s -X POST http://127.0.0.1:8090/api/v1/admin/reviews/1/reject \
 curl -s 'http://127.0.0.1:8090/api/v1/admin/operation-logs?page=1&page_size=20' \
   -H "Authorization: Bearer <token>"
 ```
+
+按日期范围查询：
+
+```bash
+curl -s 'http://127.0.0.1:8090/api/v1/admin/operation-logs?start_time=2026-07-01&end_time=2026-07-10' \
+  -H "Authorization: Bearer <token>"
+```
+
+仅传日期时，`start_time` 从当天 `00:00:00` 开始，`end_time` 包含结束日全天。服务端内部转换为右开区间，避免遗漏 `DATETIME(3)` 在最后一秒内的毫秒数据；开始时间晚于结束时间会返回参数错误。
 
 按对象编号精确查询：
 
