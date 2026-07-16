@@ -78,7 +78,7 @@ public class AdminTokenService {
         String username = request.getUsername();
         AdminUserEntity user = rbacMapper == null ? null : rbacMapper.selectUserByUsername(username);
         if (user == null) {
-            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "账号或密码错误");
         }
         return loginDbUser(user, request.getPassword());
     }
@@ -86,7 +86,7 @@ public class AdminTokenService {
     private LoginResponse loginDbUser(AdminUserEntity user, String rawPassword) {
         if (!Integer.valueOf(1).equals(user.getStatus())
             || !passwordHashService.matches(rawPassword, user.getPasswordHash(), user.getPasswordSha256())) {
-            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "账号或密码错误");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "账号或密码错误");
         }
         long tokenVersion = normalizeTokenVersion(user.getTokenVersion());
         if (passwordHashService.needsUpgrade(user.getPasswordHash()) && rbacMapper != null) {

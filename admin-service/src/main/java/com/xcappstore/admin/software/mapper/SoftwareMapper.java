@@ -72,6 +72,14 @@ public interface SoftwareMapper {
         @Param("updatedBy") Long updatedBy
     );
 
+    int transitionStatus(
+        @Param("id") Long id,
+        @Param("expectedStatus") Integer expectedStatus,
+        @Param("status") Integer status,
+        @Param("publishedAt") LocalDateTime publishedAt,
+        @Param("updatedBy") Long updatedBy
+    );
+
     int approveDraftVersions(
         @Param("appId") Long appId,
         @Param("reviewedAt") LocalDateTime reviewedAt,

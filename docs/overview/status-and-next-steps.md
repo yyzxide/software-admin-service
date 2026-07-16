@@ -54,7 +54,7 @@ java-software-admin-service/
 
 测试：
 
-- 最近一次本地执行结果为 83 个测试、0 失败、1 个跳过。
+- 最近一次本地执行结果为 89 个测试、0 失败、1 个跳过。
 - 当前已有覆盖核心 Service、Controller、鉴权、上传、安装包准备、审核、分类、标签和日志的单元测试。
 - 已加入 Testcontainers MySQL 集成测试骨架；Docker 可用时验证真实分类软删除唯一索引，本轮机器没有 Docker，因此该 1 项自动跳过。
 

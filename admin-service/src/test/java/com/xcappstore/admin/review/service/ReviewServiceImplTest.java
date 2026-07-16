@@ -342,6 +342,7 @@ class ReviewServiceImplTest {
         @Override public AppPackageEntity selectPackageById(Long packageId) { return packages.get(packageId); }
         @Override public int updatePackageScanResult(Long packageId, Integer scanStatus, String scanReport, Long updatedBy) { return 1; }
         @Override public int updateStatus(Long id, Integer status, LocalDateTime publishedAt, Long updatedBy) { SoftwareEntity app = apps.get(id); app.setStatus(status); app.setPublishedAt(publishedAt); app.setUpdatedBy(updatedBy); return 1; }
+        @Override public int transitionStatus(Long id, Integer expectedStatus, Integer status, LocalDateTime publishedAt, Long updatedBy) { SoftwareEntity app = apps.get(id); if (app == null || !expectedStatus.equals(app.getStatus())) return 0; return updateStatus(id, status, publishedAt, updatedBy); }
         @Override public int approveDraftVersions(Long appId, LocalDateTime reviewedAt, LocalDateTime publishedAt, Long updatedBy) { approvedDraftVersions++; return 1; }
         @Override public int updateAppReviewing(Long id, Long updatedBy) { apps.get(id).setStatus(1); return 1; }
         @Override public int updateVersionReviewing(Long versionId, Long updatedBy) { AppVersionEntity version = versions.get(versionId); version.setStatus(1); version.setUpdatedBy(updatedBy); return 1; }

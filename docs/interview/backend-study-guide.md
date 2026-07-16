@@ -241,7 +241,7 @@ MyBatis XML 本身不是简历亮点。真正值得讲的是你如何用 SQL 条
 
 ### 当前结果
 
-最近一次 `mvn test`：83 个测试、0 失败、1 个跳过。跳过的是 Testcontainers MySQL 用例，因为执行机器没有 Docker。面试时必须如实说“单元与 Controller 测试已通过，真实 MySQL 集成项本机跳过”，不能说全部集成测试通过。
+最近一次 `mvn test`：89 个测试、0 失败、1 个跳过。跳过的是 Testcontainers MySQL 用例，因为执行机器的 Docker API 与 Testcontainers 不兼容。面试时必须如实说“单元与 Controller 测试已通过，真实 MySQL 集成项本机跳过”，不能说全部集成测试通过。
 
 ### 重点回归用例
 

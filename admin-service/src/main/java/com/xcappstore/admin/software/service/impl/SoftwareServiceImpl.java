@@ -255,7 +255,14 @@ public class SoftwareServiceImpl implements SoftwareService {
         Long operatorId = normalizeAdminUserId(adminUserId);
         packageSecurityPolicyService.assertAppPackagesPublishable(id);
         LocalDateTime now = LocalDateTime.now();
-        softwareMapper.updateStatus(id, SoftwareStatus.PUBLISHED.code(), now, operatorId);
+        int affected = softwareMapper.transitionStatus(
+            id,
+            SoftwareStatus.UNPUBLISHED.code(),
+            SoftwareStatus.PUBLISHED.code(),
+            now,
+            operatorId
+        );
+        ensureManualStatusTransition(affected);
         softwareCacheService.invalidateDetail(id);
         SoftwareResponse response = freshDetail(id);
         operationLogPublisher.record(operatorId, "software_publish", "software", id, response.getName(), "上架软件: " + response.getName());
@@ -275,7 +282,14 @@ public class SoftwareServiceImpl implements SoftwareService {
         }
 
         Long operatorId = normalizeAdminUserId(adminUserId);
-        softwareMapper.updateStatus(id, SoftwareStatus.UNPUBLISHED.code(), app.getPublishedAt(), operatorId);
+        int affected = softwareMapper.transitionStatus(
+            id,
+            SoftwareStatus.PUBLISHED.code(),
+            SoftwareStatus.UNPUBLISHED.code(),
+            app.getPublishedAt(),
+            operatorId
+        );
+        ensureManualStatusTransition(affected);
         softwareCacheService.invalidateDetail(id);
         SoftwareResponse response = freshDetail(id);
         operationLogPublisher.record(operatorId, "software_unpublish", "software", id, response.getName(), "下架软件: " + response.getName());
@@ -449,6 +463,12 @@ public class SoftwareServiceImpl implements SoftwareService {
 
     private SoftwareResponse freshDetail(Long id) {
         return softwareAssembler.toResponse(requireSoftware(id));
+    }
+
+    private void ensureManualStatusTransition(int affected) {
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.SOFTWARE_INVALID_STATUS, "软件状态已变化，请刷新后重试");
+        }
     }
 
     private SoftwareEntity requireSoftware(Long id) {

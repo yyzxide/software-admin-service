@@ -73,7 +73,7 @@ class AdminTokenServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.login(request));
 
-        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getCode());
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     @Test
@@ -208,7 +208,7 @@ class AdminTokenServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.login(request));
 
-        assertEquals(ErrorCode.PERMISSION_DENIED, ex.getCode());
+        assertEquals(ErrorCode.UNAUTHORIZED, ex.getCode());
     }
 
     private AdminTokenService serviceWithUser(Long id, String username, String rawPassword) {

@@ -21,6 +21,7 @@ import com.xcappstore.admin.software.entity.AppPackageEntity;
 import com.xcappstore.admin.software.entity.AppVersionEntity;
 import com.xcappstore.admin.software.entity.SoftwareEntity;
 import com.xcappstore.admin.software.mapper.SoftwareMapper;
+import com.xcappstore.admin.software.model.SoftwareStatus;
 import com.xcappstore.admin.software.service.PackageFileStorageService.PackageVerificationResult;
 import com.xcappstore.admin.software.service.PackageFileStorageService.StoredPackage;
 import com.xcappstore.admin.software.service.PackageFileStorageService.VerifiedPackage;
@@ -120,6 +121,21 @@ class SoftwareServiceImplTest {
     }
 
     @Test
+    void rejectsPublishWhenStatusChangesConcurrently() {
+        softwareMapper.apps.put(1L, app(1L, "待上架软件", 3));
+        softwareMapper.packages.put(10L, publishablePackage(10L, 1L, 1L));
+        softwareMapper.statusBeforeTransition = SoftwareStatus.REVIEWING.code();
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> softwareService.publish(1L, 99L));
+
+        assertEquals(ErrorCode.SOFTWARE_INVALID_STATUS, ex.getCode());
+        assertEquals("软件状态已变化，请刷新后重试", ex.getMessage());
+        assertEquals(SoftwareStatus.REVIEWING.code(), softwareMapper.apps.get(1L).getStatus());
+        assertEquals(0, softwareMapper.updateStatusCount);
+        assertEquals(0, softwareCacheService.invalidateCount);
+    }
+
+    @Test
     void unpublishingUnpublishedSoftwareIsIdempotent() {
         SoftwareEntity app = app(1L, "已下架软件", 3);
         LocalDateTime publishedAt = LocalDateTime.of(2026, 7, 1, 10, 0);
@@ -132,6 +148,22 @@ class SoftwareServiceImplTest {
         assertEquals(publishedAt, softwareMapper.apps.get(1L).getPublishedAt());
         assertEquals(0, softwareMapper.updateStatusCount);
         assertEquals(0, softwareCacheService.invalidateCount);
+    }
+
+    @Test
+    void unpublishesPublishedSoftwareAndKeepsOriginalPublishTime() {
+        SoftwareEntity app = app(1L, "已上架软件", 2);
+        LocalDateTime publishedAt = LocalDateTime.of(2026, 7, 1, 10, 0);
+        app.setPublishedAt(publishedAt);
+        softwareMapper.apps.put(1L, app);
+
+        SoftwareResponse response = softwareService.unpublish(1L, 99L);
+
+        assertEquals(SoftwareStatus.UNPUBLISHED.code(), response.getStatus());
+        assertEquals(publishedAt, softwareMapper.apps.get(1L).getPublishedAt());
+        assertEquals(99L, softwareMapper.apps.get(1L).getUpdatedBy());
+        assertEquals(1, softwareMapper.updateStatusCount);
+        assertEquals(1, softwareCacheService.invalidateCount);
     }
 
     @Test
@@ -476,6 +508,7 @@ class SoftwareServiceImplTest {
         private int deletedAppTagCount;
         private int markNotLatestCount;
         private int updateStatusCount;
+        private Integer statusBeforeTransition;
 
         @Override
         public long countByAppKey(String appKey) {
@@ -634,6 +667,22 @@ class SoftwareServiceImplTest {
             app.setUpdatedBy(updatedBy);
             updateStatusCount++;
             return 1;
+        }
+
+        @Override
+        public int transitionStatus(Long id, Integer expectedStatus, Integer status, LocalDateTime publishedAt, Long updatedBy) {
+            SoftwareEntity app = apps.get(id);
+            if (app == null) {
+                return 0;
+            }
+            if (statusBeforeTransition != null) {
+                app.setStatus(statusBeforeTransition);
+                statusBeforeTransition = null;
+            }
+            if (!expectedStatus.equals(app.getStatus())) {
+                return 0;
+            }
+            return updateStatus(id, status, publishedAt, updatedBy);
         }
 
         @Override

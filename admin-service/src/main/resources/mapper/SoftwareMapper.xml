@@ -349,6 +349,17 @@
           AND deleted_at IS NULL
     </update>
 
+    <update id="transitionStatus">
+        UPDATE apps
+        SET status = #{status},
+            published_at = #{publishedAt},
+            updated_by = #{updatedBy},
+            updated_at = NOW(3)
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+          AND deleted_at IS NULL
+    </update>
+
     <update id="approveDraftVersions">
         UPDATE app_versions
         SET status = 2,
